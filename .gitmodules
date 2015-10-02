@@ -1,0 +1,9 @@
+[submodule "models"]
+	path = models
+	url = ../models
+[submodule "Matlab-helpers"]
+	path = Matlab-helpers
+	url = ../Matlab-helpers/
+[submodule "EPABC"]
+	path = EPABC
+	url = ../EPABC/
