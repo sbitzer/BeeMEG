@@ -5,6 +5,7 @@ Created on Mon Apr 25 16:54:58 2016
 @author: Sebastian Bitzer (sebastian.bitzer@tu-dresden.de)
 """
 
+import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -159,6 +160,9 @@ else:
 
 model.dt = dotdt
 model.toresponse = toresponse
+# this is ignored when ndtmean is fitted, but makes a difference when 
+# predicting from the model and not providing a value for ndtmean in the call
+model.ndtmean = -10
 
 # initialise samples
 samples = pd.DataFrame([], columns=(parnames+['distribution']))
@@ -204,6 +208,8 @@ NP = 15000
 choices, rts, samples_pos = model.gen_response_from_Gauss_posterior(
     np.arange(L), parnames, ep_mean, ep_cov, NP, 
     paramtransform, return_samples=True)
+samples_pos = pd.DataFrame(samples_pos, columns=parnames)
+samples_pos['distribution'] = 'pos'
 
 # compute posterior predictive log-likelihoods
 ppls = rtmodels.estimate_abc_loglik(respRT['response'], 
@@ -213,9 +219,7 @@ print('sum of ppls for fitted trials = %8.2f' % ppls[:fitind.size].sum())
 print('sum of ppls for test trials = %8.2f' % ppls[fitind.size:].sum())
     
 if S > 0:
-    samples_pos = pd.DataFrame(samples_pos[:S, :], columns=parnames)
-    samples_pos['distribution'] = 'pos'
-    samples = samples.append(samples_pos, ignore_index=True)
+    samples = samples.append(samples_pos.iloc[:S], ignore_index=True)
     
     if isinstance(model, rtmodels.sensory_discrete_static_gauss):
         samples['noisestd'] = samples['noisestd'] / sdsgscale
@@ -226,3 +230,16 @@ if S > 0:
         parnames)
     
     plt.show()
+    
+"""
+Estimate the contribution of the nondecision time by computing the ratio of 
+nondecision time to RT for each trial. This is only approximate, because I 
+resample the nondecision times from the posterior samples.
+"""
+# for each sample from the posterior sample from the corresponding ndt distribution
+ndt = np.zeros(NP)
+for p in range(NP):
+    ndt[p] = random.lognormvariate(samples_pos['ndtmean'][p], 
+                                   samples_pos['ndtspread'][p])
+
+print('median ratio of ndt to total RT: %4.2f' % np.median(ndt / rts))
