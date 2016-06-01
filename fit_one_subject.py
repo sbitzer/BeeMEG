@@ -49,10 +49,13 @@ def load_subject_data(subject_index, datadir='data'):
 datadir = 'data'
 
 # subject index as coded in file names
-sub = 6
+sub = 3
 
 # either 'dsg' or 'sdsg'
 model = 'dsg'
+
+# whether you want to use collapsing bounds
+collapse = False
 
 # indices of trials on which to fit; must be in [1, 480]; 
 # 1-240 is data1, 241-480 is data2
@@ -93,6 +96,8 @@ respRT = pd.concat([respRT.loc[fitind], respRT.loc[testind]])
 
 # subtract 1 because indeces in respRT start at 1, not at 0
 Trials = dotpos[:, :, respRT.index - 1]
+# DDM-equiv: use this, if you don't want to use dot positions in the model
+#Trials = respRT['stimulus']
 
 # define prior for noisestd in dsg
 nmean = 4.
@@ -106,14 +111,6 @@ nstd = 1.5
 sdsgscale = np.diff(feature_means).sum() / dotstd**2 / np.sqrt(dotdt)
 
 if model == 'sdsg':
-    parnames = ['ndtmean', 'ndtspread', 'noisestd', 'sensdrift', 'bound', 
-                'prior', 'lapseprob', 'lapsetoprob']
-    
-    paramtransform = lambda params: np.c_[params[:, 0], 
-                                          np.exp(params[:, 1:4]), 
-                                          norm.cdf(params[:, 4]) / 2 + 0.5, 
-                                          norm.cdf(params[:, 5:])]
-    
     # restrict sensdrift to log likelihood ratio values defined by stimulus
     # to do this I estimate the distribution of llrs by sampling dots, 
     # computing the llr and estimating mean and variance
@@ -132,27 +129,65 @@ if model == 'sdsg':
     smean = llrs.mean()
     sstd = llrs.std()
     
-    # these define the priors
-    # note that adding np.log(sdsgscale) to nmean exactly implements the 
-    # scaling noisestd_sdsg = sdsgscale * noisestd_dsg in the prior
-    prior_mean = np.array([-1, -1.5, nmean + np.log(sdsgscale), smean, 0, 0, -1, 0])
-    prior_cov = np.diag(np.array([1, 1, nstd, sstd, 1, 1, 1, 1]) ** 2)
+    if collapse:
+        parnames = ['ndtmean', 'ndtspread', 'noisestd', 'sensdrift', 'bshape', 
+                    'bound', 'bstretch', 'prior', 'lapseprob', 'lapsetoprob']
+        
+        paramtransform = lambda params: np.c_[params[:, 0], 
+                                              np.exp(params[:, 1:5]), 
+                                              norm.cdf(params[:, 5]) / 2 + 0.5, 
+                                              norm.cdf(params[:, 6:])]
+    
+        # these define the priors
+        # note that adding np.log(sdsgscale) to nmean exactly implements the 
+        # scaling noisestd_sdsg = sdsgscale * noisestd_dsg in the prior
+        prior_mean = np.array([-1, -1.5, nmean + np.log(sdsgscale), smean, 
+                               np.log(1.4), 0, 0, 0, -1, 0])
+        prior_cov = np.diag(np.array([1, 1, nstd, sstd, 1.5, 1, 1, 1, 1, 1]) ** 2)
+    else:
+        parnames = ['ndtmean', 'ndtspread', 'noisestd', 'sensdrift',
+                    'bound', 'prior', 'lapseprob', 'lapsetoprob']
+        
+        paramtransform = lambda params: np.c_[params[:, 0], 
+                                              np.exp(params[:, 1:4]), 
+                                              norm.cdf(params[:, 4]) / 2 + 0.5, 
+                                              norm.cdf(params[:, 5:])]
+    
+        # these define the priors
+        # note that adding np.log(sdsgscale) to nmean exactly implements the 
+        # scaling noisestd_sdsg = sdsgscale * noisestd_dsg in the prior
+        prior_mean = np.array([-1, -1.5, nmean + np.log(sdsgscale), smean, 
+                               0, 0, -1, 0])
+        prior_cov = np.diag(np.array([1, 1, nstd, sstd, 1, 1, 1, 1]) ** 2)
     
     # make model
     model = rtmodels.sensory_discrete_static_gauss(maxrt=dotdt*D, choices=[-1, 1], 
         Trials=Trials, means=feature_means, intstd=dotstd)
 else:
-    parnames = ['ndtmean', 'ndtspread', 'noisestd', 'bound', 
-                'prior', 'lapseprob', 'lapsetoprob']
-    
-    paramtransform = lambda params: np.c_[params[:, 0], 
-                                          np.exp(params[:, 1:3]), 
-                                          norm.cdf(params[:, 3]) / 2 + 0.5, 
-                                          norm.cdf(params[:, 4:])]
-    
-    # these define the priors
-    prior_mean = np.array([-1, -1.5, nmean, 0, 0, -1, 0])
-    prior_cov = np.diag(np.array([1, 1, nstd, 1, 1, 1, 1]) ** 2)
+    if collapse:
+        parnames = ['ndtmean', 'ndtspread', 'noisestd', 'bshape', 'bound', 'bstretch',
+                    'prior', 'lapseprob', 'lapsetoprob']
+        
+        paramtransform = lambda params: np.c_[params[:, 0], 
+                                              np.exp(params[:, 1:4]), 
+                                              norm.cdf(params[:, 4]) / 2 + 0.5, 
+                                              norm.cdf(params[:, 5:])]
+        
+        # these define the priors
+        prior_mean = np.array([-1, -1.5, nmean, np.log(1.4), 0, 0, 0, -1, 0])
+        prior_cov = np.diag(np.array([1, 1, nstd, 1.5, 1, 1, 1, 1, 1]) ** 2)
+    else:
+        parnames = ['ndtmean', 'ndtspread', 'noisestd', 'bound',
+                    'prior', 'lapseprob', 'lapsetoprob']
+        
+        paramtransform = lambda params: np.c_[params[:, 0], 
+                                              np.exp(params[:, 1:3]), 
+                                              norm.cdf(params[:, 3]) / 2 + 0.5, 
+                                              norm.cdf(params[:, 4:])]
+        
+        # these define the priors
+        prior_mean = np.array([-1, -1.5, nmean, 0, 0, -1, 0])
+        prior_cov = np.diag(np.array([1, 1, nstd, 1, 1, 1, 1]) ** 2)
     
     # make model
     model = rtmodels.discrete_static_gauss(maxrt=dotdt*D, choices=[-1, 1], 
