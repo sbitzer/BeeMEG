@@ -8,16 +8,15 @@ Created on Mon Apr 25 16:54:58 2016
 import random
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import os.path
 from scipy.io import loadmat
-from scipy.stats import norm
 import rtmodels
 import pyEPABC
+from pyEPABC.parameters import exponential, gaussprob
 
 
 def load_subject_data(subject_index, datadir='data'):
-    mat = loadmat(os.path.join(datadir, 's%02d-BeeMEG_pv3.mat' % subject_index), 
+    mat = loadmat(os.path.join(datadir, '%02d-meg.mat' % subject_index), 
                   variable_names=['m_dat'])
     
     extract_data = lambda mat: np.c_[np.abs(mat[:, 0]), np.sign(mat[:, 0]),
@@ -44,15 +43,11 @@ def load_subject_data(subject_index, datadir='data'):
     
     return respRT, toresponse
     
-
-# --- most important user choices ---------------------------------------------
+#%%--- most important user choices --------------------------------------------
 datadir = 'data'
 
 # subject index as coded in file names
 sub = 3
-
-# either 'dsg' or 'sdsg'
-model = 'dsg'
 
 # whether you want to use collapsing bounds
 collapse = False
@@ -60,12 +55,13 @@ collapse = False
 # indices of trials on which to fit; must be in [1, 480]; 
 # 1-240 is data1, 241-480 is data2
 fitind = np.arange(1, 241, dtype=np.int)
+fitind = np.arange(1, 401, dtype=np.int)
 
 # number of samples to plot per distribution later, set to 0 for no plot
-S = 300
+S = 0
 # -----------------------------------------------------------------------------
 
-
+#%% load data
 mat = loadmat(os.path.join(datadir, 'batch_dots_pv2.mat'),
               variable_names=['xdots_n', 'ydots_n'])
 
@@ -79,7 +75,7 @@ dotpos[:, 1, :] = mat['ydots_n'][:, :-1].T
 
 dotstd = 70.
 
-respRT, toresponse = load_subject_data(sub, datadir)
+respRT, toresponse = load_subject_data(sub, os.path.join(datadir, 'meg_behav'))
 dotdt = 0.1
 
 cond = 25
@@ -99,99 +95,28 @@ Trials = dotpos[:, :, respRT.index - 1]
 # DDM-equiv: use this, if you don't want to use dot positions in the model
 #Trials = respRT['stimulus']
 
-# define prior for noisestd in dsg
-nmean = 4.
-nstd = 1.5
+#%% prepare model
 
-# noisestd in dsg and sdsg have different scale, but are equivalent when
-# only two responses are used, this is the factor which translates between
-# them (noisestd_sdsg = sdsgscale * noisestd_dsg; to get this note that in
-# sdsg you add noise to the log likelihood ratio whereas in dsg you add 
-# noise to the feature values):
-sdsgscale = np.diff(feature_means).sum() / dotstd**2 / np.sqrt(dotdt)
+# empty parameter container
+pars = pyEPABC.parameters.parameter_container()
 
-if model == 'sdsg':
-    # restrict sensdrift to log likelihood ratio values defined by stimulus
-    # to do this I estimate the distribution of llrs by sampling dots, 
-    # computing the llr and estimating mean and variance
-    # compute llrs:
-    llrs = np.dot(np.random.multivariate_normal(feature_means[:, 0], 
-        np.eye(2)*dotstd**2, 1000), feature_means[:, 0] - 
-        feature_means[:, 1]) / dotstd**2
-    # divide by dt, because the drift diffusion process should reach llr
-    # after dt time on average
-    llrs = llrs / dotdt
-    # take absolute value, because I'm only interested in magnitudes, then
-    # transform to log-space where the prior is defined
-    llrs = np.log(np.abs(llrs))
-    # get mean and std; the resulting log-normal distribution will have a 
-    # heavier tail than the original distribution
-    smean = llrs.mean()
-    sstd = llrs.std()
-    
-    if collapse:
-        parnames = ['ndtmean', 'ndtspread', 'noisestd', 'sensdrift', 'bshape', 
-                    'bound', 'bstretch', 'prior', 'lapseprob', 'lapsetoprob']
-        
-        paramtransform = lambda params: np.c_[params[:, 0], 
-                                              np.exp(params[:, 1:5]), 
-                                              norm.cdf(params[:, 5]) / 2 + 0.5, 
-                                              norm.cdf(params[:, 6:])]
-    
-        # these define the priors
-        # note that adding np.log(sdsgscale) to nmean exactly implements the 
-        # scaling noisestd_sdsg = sdsgscale * noisestd_dsg in the prior
-        prior_mean = np.array([-1, -1.5, nmean + np.log(sdsgscale), smean, 
-                               np.log(1.4), 0, 0, 0, -1, 0])
-        prior_cov = np.diag(np.array([1, 1, nstd, sstd, 1.5, 1, 1, 1, 1, 1]) ** 2)
-    else:
-        parnames = ['ndtmean', 'ndtspread', 'noisestd', 'sensdrift',
-                    'bound', 'prior', 'lapseprob', 'lapsetoprob']
-        
-        paramtransform = lambda params: np.c_[params[:, 0], 
-                                              np.exp(params[:, 1:4]), 
-                                              norm.cdf(params[:, 4]) / 2 + 0.5, 
-                                              norm.cdf(params[:, 5:])]
-    
-        # these define the priors
-        # note that adding np.log(sdsgscale) to nmean exactly implements the 
-        # scaling noisestd_sdsg = sdsgscale * noisestd_dsg in the prior
-        prior_mean = np.array([-1, -1.5, nmean + np.log(sdsgscale), smean, 
-                               0, 0, -1, 0])
-        prior_cov = np.diag(np.array([1, 1, nstd, sstd, 1, 1, 1, 1]) ** 2)
-    
-    # make model
-    model = rtmodels.sensory_discrete_static_gauss(maxrt=dotdt*D, choices=[-1, 1], 
-        Trials=Trials, means=feature_means, intstd=dotstd)
-else:
-    if collapse:
-        parnames = ['ndtmean', 'ndtspread', 'noisestd', 'bshape', 'bound', 'bstretch',
-                    'prior', 'lapseprob', 'lapsetoprob']
-        
-        paramtransform = lambda params: np.c_[params[:, 0], 
-                                              np.exp(params[:, 1:4]), 
-                                              norm.cdf(params[:, 4]) / 2 + 0.5, 
-                                              norm.cdf(params[:, 5:])]
-        
-        # these define the priors
-        prior_mean = np.array([-1, -1.5, nmean, np.log(1.4), 0, 0, 0, -1, 0])
-        prior_cov = np.diag(np.array([1, 1, nstd, 1.5, 1, 1, 1, 1, 1]) ** 2)
-    else:
-        parnames = ['ndtmean', 'ndtspread', 'noisestd', 'bound',
-                    'prior', 'lapseprob', 'lapsetoprob']
-        
-        paramtransform = lambda params: np.c_[params[:, 0], 
-                                              np.exp(params[:, 1:3]), 
-                                              norm.cdf(params[:, 3]) / 2 + 0.5, 
-                                              norm.cdf(params[:, 4:])]
-        
-        # these define the priors
-        prior_mean = np.array([-1, -1.5, nmean, 0, 0, -1, 0])
-        prior_cov = np.diag(np.array([1, 1, nstd, 1, 1, 1, 1]) ** 2)
-    
-    # make model
-    model = rtmodels.discrete_static_gauss(maxrt=dotdt*D, choices=[-1, 1], 
-        Trials=Trials, means=feature_means, intstd=dotstd)
+# common parameters
+pars.add_param('ndtmean', -1, 1)
+pars.add_param('ndtspread', -1.5, 1, exponential())
+pars.add_param('noisestd', 4, 1.5, exponential())
+pars.add_param('bound', 0, 1, gaussprob(0.5, 0.5))
+pars.add_param('prior', 0, 1, gaussprob())
+pars.add_param('lapseprob', -1, 1, gaussprob())
+pars.add_param('lapsetoprob', 0, 1, gaussprob())
+
+# collapsing bound parameters
+if collapse:
+    pars.add_param('bshape', np.log(1.4), 1.5, exponential())
+    pars.add_param('bstretch', 0, 1, gaussprob())
+
+# make model
+model = rtmodels.discrete_static_gauss(maxrt=dotdt*D, choices=[-1, 1], 
+    Trials=Trials, means=feature_means, intstd=dotstd)
 
 model.dt = dotdt
 model.toresponse = toresponse
@@ -199,24 +124,15 @@ model.toresponse = toresponse
 # predicting from the model and not providing a value for ndtmean in the call
 model.ndtmean = -10
 
-# initialise samples
-samples = pd.DataFrame([], columns=(parnames+['distribution']))
-
+# plot prior distribution of parameters
 if S > 0:
-    # sample from EPABC prior
-    samples_pr = np.random.multivariate_normal(prior_mean, prior_cov, S)
-    samples_pr = pd.DataFrame(paramtransform(samples_pr), columns=parnames)
-    samples_pr['distribution'] = 'prior'
-    samples = samples.append(samples_pr, ignore_index=True)
-    
-    # plot the prior(s)
-    pg_prior = model.plot_parameter_distribution(
-        samples[samples['distribution'].map(lambda x: x.endswith('prior'))], 
-        parnames, q_upper=0.95)
+    pars.plot_param_dist(S=S)
 
+    
+#%% setup and run EP-ABC
 # wrapper for sampling from model and directly computing distances
 simfun = lambda data, dind, parsamples: model.gen_distances_with_params(
-    data[0], data[1], dind, paramtransform(parsamples), parnames)
+    data[0], data[1], dind, pars.transform(parsamples), pars.names)
 distfun = None
 
 # maximum distance allowed for accepting samples, note that for 
@@ -233,18 +149,19 @@ veps = 2 * 2 * epsilon
 # run EPABC
 ep_mean, ep_cov, ep_logml, nacc, ntotal, runtime = pyEPABC.run_EPABC(
     np.c_[respRT.loc[fitind]['response'], respRT.loc[fitind]['RT']], simfun, distfun, 
-    prior_mean, prior_cov, epsilon=epsilon, minacc=1000, samplestep=10000, 
+    pars.mu, pars.cov, epsilon=epsilon, minacc=1000, samplestep=10000, 
     samplemax=4000000, npass=2, alpha=0.5, veps=veps)
     
 print('logml = %8.2f' % ep_logml)
-    
+
+
+#%% evaluate posterior
 # sample from EPABC posterior (for all trials)
 NP = 15000
 choices, rts, samples_pos = model.gen_response_from_Gauss_posterior(
-    np.arange(L), parnames, ep_mean, ep_cov, NP, 
-    paramtransform, return_samples=True)
-samples_pos = pd.DataFrame(samples_pos, columns=parnames)
-samples_pos['distribution'] = 'pos'
+    np.arange(L), pars.names, ep_mean, ep_cov, NP, 
+    pars.transform, return_samples=True)
+samples_pos = pd.DataFrame(samples_pos, columns=pars.names)
 
 # compute posterior predictive log-likelihoods
 ppls = rtmodels.estimate_abc_loglik(respRT['response'], 
@@ -252,19 +169,10 @@ ppls = rtmodels.estimate_abc_loglik(respRT['response'],
 print('sum of ppls = %8.2f' % ppls.sum())
 print('sum of ppls for fitted trials = %8.2f' % ppls[:fitind.size].sum())
 print('sum of ppls for test trials = %8.2f' % ppls[fitind.size:].sum())
-    
-if S > 0:
-    samples = samples.append(samples_pos.iloc[:S], ignore_index=True)
-    
-    if isinstance(model, rtmodels.sensory_discrete_static_gauss):
-        samples['noisestd'] = samples['noisestd'] / sdsgscale
 
-    # plot the posterior(s)
-    pg_pos = model.plot_parameter_distribution(
-        samples[samples['distribution'].map(lambda x: x.endswith('pos'))], 
-        parnames)
-    
-    plt.show()
+# plot the posterior(s)
+if S > 0:
+    pars.plot_param_dist(ep_mean, ep_cov, S)
     
 """
 Estimate the contribution of the nondecision time by computing the ratio of 
