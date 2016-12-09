@@ -1,3 +1,4 @@
 .spyproject
 .spyderproject
 data
+__pycache__
