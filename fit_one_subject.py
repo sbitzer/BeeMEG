@@ -13,49 +13,27 @@ from scipy.io import loadmat
 import rtmodels
 import pyEPABC
 from pyEPABC.parameters import exponential, gaussprob
+import helpers
 
-
-def load_subject_data(subject_index, datadir='data'):
-    mat = loadmat(os.path.join(datadir, '%02d-meg.mat' % subject_index), 
-                  variable_names=['m_dat'])
-    
-    extract_data = lambda mat: np.c_[np.abs(mat[:, 0]), np.sign(mat[:, 0]),
-        mat[:, 5], mat[:, 3] / 10000]
-    
-    colnames = ['condition', 'stimulus', 'response', 'RT']
-    
-    # make a data frame with the relevant data
-    respRT = pd.DataFrame(extract_data(mat['m_dat']), 
-                          index=mat['m_dat'][:, 1], 
-                          columns=colnames)
-    
-    toresponse = np.array([0, 5.0])
-
-    # set RT of timed out responses to 5s
-    respRT['RT'][respRT['response'] == toresponse[0]] = toresponse[1]
-    
-    # recode timed out responses (=0) as 1.5: this makes them 0 after the next
-    # transformation to -1 and 1
-    respRT.replace({'response': {toresponse[0]: 1.5}}, inplace=True)
-    
-    # unify coding of left stimuli (1 = -1) and right stimuli (2 = 1)
-    respRT['response'] = (respRT['response'] - 1.5)  * 2    
-    
-    return respRT, toresponse
     
 #%%--- most important user choices --------------------------------------------
 datadir = 'data'
 
 # subject index as coded in file names
-sub = 3
+sub = 15
 
 # whether you want to use collapsing bounds
-collapse = False
+collapse = True
 
-# indices of trials on which to fit; must be in [1, 480]; 
-# 1-240 is data1, 241-480 is data2
-fitind = np.arange(1, 241, dtype=np.int)
-fitind = np.arange(1, 401, dtype=np.int)
+# which trials to use for inference and test?
+# - there were 480 trials
+# - in the order of the dotpos the first 240 trials differ from the second 240
+#   trials only in that the sign of their x-positions is flipped
+# - give here the indices of the trials in dotpos that you want to hold out
+#   from inference to estimate a goodness of fit measure
+# - give empty array to use all trials for inference
+#testind = np.array([], dtype=np.int16)
+testind = np.arange(400, 480, dtype=np.int16)
 
 # number of samples to plot per distribution later, set to 0 for no plot
 S = 0
@@ -75,25 +53,23 @@ dotpos[:, 1, :] = mat['ydots_n'][:, :-1].T
 
 dotstd = 70.
 
-respRT, toresponse = load_subject_data(sub, os.path.join(datadir, 'meg_behav'))
+respRT = helpers.load_subject_data(sub)
+
+toresponse = helpers.defaultto
 dotdt = 0.1
 
-cond = 25
-
-# check that all trials belong to that condition
-assert(np.all(respRT['condition'] == cond))
+cond = helpers.defaultcond
 
 feature_means = np.c_[[-cond, 0], [cond, 0]]
 
-# sort respRT such that fitind are first, because EP-ABC will only fit the 
+# sort trials such that fitind are first, because EP-ABC will only fit the 
 # first couple of trials that are stored in the model
-testind = np.setdiff1d(np.arange(1, L+1), fitind, assume_unique=True)
-respRT = pd.concat([respRT.loc[fitind], respRT.loc[testind]])
+fitind = np.setdiff1d(np.arange(L), testind, assume_unique=True)
+allind = np.r_[fitind, testind]
+Trials = dotpos[:, :, allind]
 
-# subtract 1 because indeces in respRT start at 1, not at 0
-Trials = dotpos[:, :, respRT.index - 1]
 # DDM-equiv: use this, if you don't want to use dot positions in the model
-#Trials = respRT['stimulus']
+#Trials = respRT.loc[allind+1, 'stimulus']
 
 #%% prepare model
 
@@ -146,11 +122,12 @@ epsilon = 0.05
 # point mass, i.e., one particular value of response and RT)
 veps = 2 * 2 * epsilon
 
+data = respRT.loc[fitind+1, ['response', 'RT']].values
+
 # run EPABC
 ep_mean, ep_cov, ep_logml, nacc, ntotal, runtime = pyEPABC.run_EPABC(
-    np.c_[respRT.loc[fitind]['response'], respRT.loc[fitind]['RT']], simfun, distfun, 
-    pars.mu, pars.cov, epsilon=epsilon, minacc=1000, samplestep=10000, 
-    samplemax=4000000, npass=2, alpha=0.5, veps=veps)
+    data, simfun, distfun, pars.mu, pars.cov, epsilon=epsilon, minacc=2000, 
+    samplestep=10000, samplemax=6000000, npass=2, alpha=0.5, veps=veps)
     
 print('logml = %8.2f' % ep_logml)
 
@@ -164,8 +141,8 @@ choices, rts, samples_pos = model.gen_response_from_Gauss_posterior(
 samples_pos = pd.DataFrame(samples_pos, columns=pars.names)
 
 # compute posterior predictive log-likelihoods
-ppls = rtmodels.estimate_abc_loglik(respRT['response'], 
-    respRT['RT'], choices, rts, epsilon)
+ppls = rtmodels.estimate_abc_loglik(respRT.loc[allind+1, 'response'], 
+    respRT.loc[allind+1, 'RT'], choices, rts, epsilon)
 print('sum of ppls = %8.2f' % ppls.sum())
 print('sum of ppls for fitted trials = %8.2f' % ppls[:fitind.size].sum())
 print('sum of ppls for test trials = %8.2f' % ppls[fitind.size:].sum())
