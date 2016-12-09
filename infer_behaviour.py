@@ -168,6 +168,8 @@ for mname in models:
                     data, simfun, None, pars.mu, pars.cov, epsilon=epsilon, 
                     minacc=minacc, samplestep=10000, samplemax=samplemax, npass=npass, 
                     alpha=alpha, veps=veps)
+            except KeyboardInterrupt:
+                raise KeyboardInterrupt
             except:
                 errors[sub] = 'run %d:\n' % run + traceback.format_exc()
             else:
