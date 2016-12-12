@@ -33,7 +33,7 @@ megdatadir = os.path.join(basedir, 'meg_behav')
 resultsdir = os.path.join(basedir, 'inf_results')
 
 # which subjects to fit this time (either None for all or a list of numbers)
-subjects = [4, 18]
+subjects = None
 
 # which trials to use for inference and test?
 # - there were 480 trials
@@ -53,7 +53,7 @@ testind = np.arange(400, 480, dtype=np.int16)
 epsilon = 0.05
 
 # number of samples that need to be accepted before re-estimating posterior
-minacc = 200
+minacc = 2000
 
 # maximum number of samples before re-estimating posterior even when minacc is
 # not reached yet
@@ -145,6 +145,7 @@ for mname in models:
     ep_means = np.zeros((S, pars.P))
     ep_covs = np.zeros((S, pars.P, pars.P))
     ppls = np.zeros((S, L))
+    ppls_N = np.zeros((S, L))
     ep_summary = pd.DataFrame([], index=subjects, columns=(['logml', 'pplsum',
                               'pplsum_test', 'nsamples', 'runtime', 'ndtmode',
                               'dtmode', 'ndt_vs_RT'] + list(pars.names)))
@@ -191,14 +192,10 @@ for mname in models:
                 # compare non-decision time mode to median RT
                 ep_summary.loc[sub, 'ndt_vs_RT'] = ndtmode / respRT['RT'].median()
                 
-                # sample responses from posterior
-                choices, rts = model.gen_response_from_Gauss_posterior(
-                    np.arange(L), pars.names, ep_mean, ep_cov, NP, 
-                    pars.transform)
-                
                 # compute posterior predictive log-likelihoods
-                ppls[si, :] = rtmodels.estimate_abc_loglik(respRT.loc[allind+1, 
-                    'response'], respRT.loc[allind+1, 'RT'], choices, rts, epsilon)
+                ppls[si, :], ppls_N[si, :] = pyEPABC.estimate_predlik(
+                    respRT.loc[allind+1, ['response', 'RT']].values, simfun, 
+                    ep_mean, ep_cov, epsilon, samplestep=NP)
                 
                 ep_summary.loc[sub, 'pplsum'] = ppls[si, :fitind.size].sum()
                 ep_summary.loc[sub, 'pplsum_test'] = ppls[si, fitind.size:].sum()
@@ -211,5 +208,6 @@ for mname in models:
                             testind=testind, epsilon=epsilon, minacc=minacc,
                             samplemax=samplemax, npass=npass, alpha=alpha,
                             NP=NP, model=model, pars=pars, ep_means=ep_means,
-                            ep_covs=ep_covs, ppls=ppls, ep_summary=ep_summary,
+                            ep_covs=ep_covs, ppls=ppls, ppls_N=ppls_N, 
+                            ep_summary=ep_summary, 
                             ep_summary_cols=ep_summary.columns, errors=errors)
