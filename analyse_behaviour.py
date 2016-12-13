@@ -16,10 +16,10 @@ import matplotlib.pyplot as plt
 
 #%% load inference results
 resultsdir = os.path.expanduser('~/ZIH/gitrepos/BeeMEG/data/inf_results')
-#fname_collapse = 'infres_collapse_201612052119.npz'
-#fname_basic = 'infres_basic_201612051900.npz'
-fname_collapse = 'infres_collapse_201612061534.npz'
-fname_basic = 'infres_basic_201612061157.npz'
+#fname_collapse = 'infres_collapse_201612061534.npz'
+#fname_basic = 'infres_basic_201612061157.npz'
+fname_collapse = 'infres_collapse_201612121759.npz'
+fname_basic = 'infres_basic_201612121421.npz'
 
 with np.load(os.path.join(resultsdir, fname_basic)) as data:
     pars_basic = data['pars'][()]
@@ -67,10 +67,11 @@ jg.ax_joint.plot(jg.ax_joint.get_xlim(), jg.ax_joint.get_xlim())
 #%% check correlations
 # put everything together in one dataframe for easier handling
 allinfo = pd.concat([ep_summary_coll, resp_summary], axis=1)
-allinfo['hue'] = allinfo['ndt_vs_RT'] < 0.66
+allinfo['hue'] = allinfo['medianRT'] < 1
 
-pg = sns.pairplot(allinfo, hue='hue', vars=['accuracy', 'ndt_vs_RT', 'logml',
-                                            'noisestd', 'medianRT', 'stdRT'])
+pg = sns.pairplot(allinfo, hue='hue', vars=['accuracy', 'stdRT', 'medianRT', 
+                                            'ndt_vs_RT', 'logml', 
+                                            'pplsum_test', 'noisestd'])
 
 
 #%% check response distribution of single subject
@@ -107,6 +108,14 @@ chrt.sort_values('resprt', inplace=True)
 plt.figure()
 plt.plot(chrt.loc[:, ['resprt', 'resprt_m']].values, '.')
 
+
+#%% check parameter posterior for single subject
+sub = 17
+si = np.flatnonzero(ep_summary_coll.index == sub)[0]
+
+pars_coll.plot_param_dist(ep_means_coll[si, :], ep_covs_coll[si, :, :])
+fig = plt.gcf()
+fig.canvas.set_window_title(fig.canvas.get_window_title() + ' (sub %d)' % sub)
 
 #%% sequential effects?
 # these RTs will be sorted by their trial index so temporal structure within
