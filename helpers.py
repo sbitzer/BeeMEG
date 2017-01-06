@@ -11,6 +11,7 @@ from scipy.io import loadmat
 import numpy as np
 import pandas as pd
 import re
+import rtmodels
 
 dotfile = 'batch_dots_pv2.mat'
 
@@ -37,6 +38,75 @@ def load_dots(dotfile=dotfile, dotdir=defaultdir):
     return dotpos
 
 
+def get_5th_dot_infos(dotpos):
+    D = dotpos.shape[0]
+    
+    # make batch indices: a batch collects all trials with common dot positions
+    # except for the 5th dot position
+    
+    # there were 28 'long trials' for which we modulated 5th dot positions
+    batches = np.arange(1, 29)
+    
+    # there were 6 different dot positions
+    batches = np.tile(batches, 6)
+    
+    # after the 5th dot modulated trials there were 72 "short trials"
+    batches = np.r_[batches, np.arange(29, 29+72)]
+    
+    # then these trials were repeated, but with opposite sign of the x-coordinate
+    # conveniently, the batch numbers can restart at 101
+    batches = np.r_[batches, 100+batches]
+    
+    # put into DataFrame with index corresponding to order in dotpos
+    trial_info = pd.DataFrame(batches, index=pd.Index(np.arange(480)+1, 
+                              name='trial'), columns=['batch'])
+    
+    # get "correct" decision after 4th dot from ideal observer
+    feature_means = np.c_[[-cond, 0], [cond, 0]]
+    model = rtmodels.discrete_static_gauss(dt=dotdt, maxrt=dotdt*D, 
+                                           toresponse=toresponse, 
+                                           choices=[-1, 1], Trials=dotpos, 
+                                           means=feature_means)
+    
+    # set ideal observer parameters
+    model.intstd = dotstd
+    model.noisestd = 1e-15
+    model.prior = 0.5
+    
+    # generate log-posterior beliefs
+    logpost, _ = model.compute_logpost_from_features(np.arange(480))
+    
+    # get "correct" choice after 4th dot as the choice with the largest posterior
+    # belief at that time point; this is the same as summing the x-coordinates of
+    # the first 4 dots and checking whether the sum is positive: if yes, correct 
+    # choice is 1 else -1
+    trial_info['correct_4th'] = model.choices[np.argmax(logpost[3, :, :, 0], 
+                                                        axis=0)]
+    
+    # raw 5th dot position (x-coordinate)
+    trial_info['5th_dot'] = dotpos[4, 0, :]
+    
+    # The penalty is defined in terms of the correct choice according to the first 
+    # 4 dot positions, so it makes sense to define the 5th dot position in relation
+    # to whether it supports the correct choice, or not. If the correct choice is
+    # right (1) a positive dot position (x>0) supports the correct choice and 
+    # should lead to a low penalty, but if the correct choice is left (-1), a 
+    # positive dot position supports the wrong choice and should lead to a high
+    # penalty. By multiplying the 5th dot position with the (sign of) the correct
+    # choice we can flip that relationship such that a larger value always 
+    # indicates greater support for the correct choice.
+    trial_info['support_correct'] = dotpos[4, 0, :] * trial_info['correct_4th']
+    
+    # bin 5th dot positions
+    # the manipulated 5th dot positions were 64 pixels apart and the used values
+    # were [-25, 25] + [-160, -96, -32, 32, 96, 160]
+    bins = np.r_[-300, np.arange(-160, 200, 64), 300]
+    trial_info['support_correct_bin'] = np.digitize(
+        trial_info['support_correct'], bins)
+    
+    return trial_info
+    
+    
 def load_subject_data(subject_index, behavdatadir=defaultdir, cond=cond, 
                       toresponse=toresponse):
     """Load responses of a subject, recode to -1, 0, 1 for left, timed-out, right."""
