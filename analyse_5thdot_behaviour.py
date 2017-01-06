@@ -105,10 +105,26 @@ B = bins.size-1
 respRT_ext['support_correct_bin'] = np.digitize(respRT_ext['support_correct'], bins)
 
 binpenalty = np.zeros(B)
+frac_correct = np.zeros(B)
+medianRT = np.zeros(B)
 
 for i in range(B):
-    binpenalty[i] = respRT_ext.loc[respRT_ext['support_correct_bin']==i+1, 'penalty'].mean()
+    binind = respRT_ext['support_correct_bin']==i+1
+    binpenalty[i] = respRT_ext.loc[binind, 'penalty'].mean()
+    frac_correct[i] = np.mean(respRT_ext.loc[binind, 'correct_4th'] == 
+                              respRT_ext.loc[binind, 'response'])
+    medianRT[i] = respRT_ext.loc[binind, 'RT'].median()
     
 sns.plt.plot(binpenalty)
 sns.plt.xlabel('support for correct choice')
 sns.plt.ylabel('mean penalty')
+
+sns.plt.figure()
+sns.plt.plot(frac_correct)
+sns.plt.xlabel('support for correct choice')
+sns.plt.ylabel('fraction correct')
+
+sns.plt.figure()
+sns.plt.plot(medianRT)
+sns.plt.xlabel('support for correct choice')
+sns.plt.ylabel('median RT')
