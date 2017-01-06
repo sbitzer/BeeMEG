@@ -11,8 +11,9 @@ import pandas as pd
 import helpers
 import seaborn as sns
 import rtmodels
+from statsmodels.formula.api import logit
 
-sub = 2
+sub = 7
 
 respRT = helpers.load_subject_data(sub)
 
@@ -114,7 +115,8 @@ for i in range(B):
     frac_correct[i] = np.mean(respRT_ext.loc[binind, 'correct_4th'] == 
                               respRT_ext.loc[binind, 'response'])
     medianRT[i] = respRT_ext.loc[binind, 'RT'].median()
-    
+
+sns.plt.figure()
 sns.plt.plot(binpenalty)
 sns.plt.xlabel('support for correct choice')
 sns.plt.ylabel('mean penalty')
@@ -128,3 +130,9 @@ sns.plt.figure()
 sns.plt.plot(medianRT)
 sns.plt.xlabel('support for correct choice')
 sns.plt.ylabel('median RT')
+
+
+#%% compute logitstic regression
+respRT_ext['is_correct'] = (respRT_ext.correct_4th == respRT_ext.response).astype(int)
+logitres = logit('is_correct ~ support_correct', respRT_ext).fit()
+print(logitres.summary())
