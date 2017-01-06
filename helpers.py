@@ -15,8 +15,10 @@ import re
 dotfile = 'batch_dots_pv2.mat'
 
 defaultdir = os.path.join('data', 'meg_behav')
-defaultto = np.r_[0, 5.0]
-defaultcond = 25
+toresponse = np.r_[0, 5.0]
+cond = 25
+dotdt = 0.1
+dotstd = 70.
 
 
 def load_dots(dotfile=dotfile, dotdir=defaultdir):
@@ -32,15 +34,11 @@ def load_dots(dotfile=dotfile, dotdir=defaultdir):
     dotpos[:, 0, :] = mat['xdots_n'][:, :-1].T
     dotpos[:, 1, :] = mat['ydots_n'][:, :-1].T
     
-    # dot constants
-    dotstd = 70.
-    dotdt = 0.1
-    
-    return dotpos, dotstd, dotdt
-    
+    return dotpos
 
-def load_subject_data(subject_index, behavdatadir=defaultdir, cond=defaultcond, 
-                      toresponse=defaultto):
+
+def load_subject_data(subject_index, behavdatadir=defaultdir, cond=cond, 
+                      toresponse=toresponse):
     """Load responses of a subject, recode to -1, 0, 1 for left, timed-out, right."""
     
     mat = loadmat(os.path.join(behavdatadir, '%02d-meg.mat' % subject_index), 
@@ -84,8 +82,8 @@ def find_available_subjects(behavdatadir=defaultdir):
     return np.sort(np.array(subjects))
     
     
-def load_all_responses(behavdatadir=defaultdir, cond=defaultcond, 
-                       toresponse=defaultto):
+def load_all_responses(behavdatadir=defaultdir, cond=cond, 
+                       toresponse=toresponse):
     subjects = find_available_subjects(behavdatadir)
     
     allresp = pd.DataFrame([])

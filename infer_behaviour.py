@@ -79,14 +79,17 @@ if subjects is None:
 subjects = np.sort(np.array(subjects))
 S = len(subjects)
 
-dotpos, dotstd, dotdt = helpers.load_dots(dotdir=basedir)
+dotpos = helpers.load_dots(dotdir=basedir)
 D, _, L = dotpos.shape
 
-cond = helpers.defaultcond
+dotstd = helpers.dotstd
+dotdt = helpers.dotdt
+
+cond = helpers.cond
 
 feature_means = np.c_[[-cond, 0], [cond, 0]]
 
-toresponse = helpers.defaultto
+toresponse = helpers.toresponse
 
 # sort trials such that fitind are first, because EP-ABC will only fit the 
 # first couple of trials that are stored in the model
