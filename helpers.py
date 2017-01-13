@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import re
 import rtmodels
+from numba import jit
 
 dotfile = 'batch_dots_pv2.mat'
 
@@ -171,3 +172,55 @@ def load_all_responses(behavdatadir=defaultdir, cond=cond,
     allresp = allresp.reorder_levels(['subject', 'trial'])
     
     return allresp
+    
+
+@jit(nopython=True)
+def linregress_t(data, predictors):
+    """computes t-values for the slope of data = slope*predictor + intercept
+    
+    The computations are taken from scipy.stats.linregress and cross-checked 
+    with ordinary least squares of statsmodels.
+    
+    Parameters
+    ----------
+    data : 2D-array (observations x locations)
+        the data which should be predicted, t-values will be computed 
+        independently for each of the given locations
+    predictors: 1D-array (observations)
+        predictor values which are supposed to predict the data
+        
+    Returns
+    -------
+    tvals : 1D-array (locations)
+        t-values computed for the data at each location
+    """
+    # numba doesn't recognise the condition on ndim and compilation fails with
+    # an error, because it thinks that data will become 3D for a given 2D array
+#    if data.ndim == 1:
+#        data = np.expand_dims(data, 1)
+    N, M = data.shape
+    
+    TINY = 1.0e-20
+    df = N - 2
+    
+    ssxm = np.var(predictors)
+    xm = predictors - predictors.mean()
+    
+    tvals = np.zeros(M)
+    for i in range(M):
+        ssym = np.var(data[:, i])
+        r_num = np.dot(xm, data[:, i] - data[:, i].mean()) / N
+        r_den = np.sqrt(ssxm * ssym)
+        if r_den == 0.0:
+            r = 0.0
+        else:
+            r = r_num / r_den
+            # test for numerical error propagation
+            if r > 1.0:
+                r = 1.0
+            elif r < -1.0:
+                r = -1.0
+        
+        tvals[i] = r * np.sqrt(df / ((1.0 - r + TINY)*(1.0 + r + TINY)))
+    
+    return tvals

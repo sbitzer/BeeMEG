@@ -13,6 +13,7 @@ import helpers
 import statsmodels.formula.api as smf
 import pandas as pd
 import seaborn as sns
+import scipy
 
 
 #%% prepare epochs
@@ -68,8 +69,8 @@ trial_info = helpers.get_5th_dot_infos(dotpos)
 names = ['intercept', 'support_correct']
 design_matrix = np.c_[np.ones(480), trial_info['support_correct']]
 
-design_matrix[:, 1] = design_matrix[np.random.randint(480, size=480), 1]
-                      
+#design_matrix[:, 1] = design_matrix[np.random.randint(480, size=480), 1]
+
 lm = mne.stats.regression.linear_regression(epochs, design_matrix, names)
 
 #%% plot topomap of result
@@ -102,3 +103,18 @@ df = pd.DataFrame(np.c_[data[:, chind, timeind], design_matrix[:, 1]],
 res = smf.ols('data ~ support_correct', data=df).fit()
 
 print(res.summary())
+
+
+#%% permutation cluster analysis
+connectivity, co_channels = mne.channels.read_ch_connectivity(
+    '/home/bitzer/proni/BeeMEG/MEG/neuromag306mag_neighb.mat')
+
+epochs_mag = epochs.pick_types(meg='mag')
+
+# channels must have the same order
+assert(np.all(np.array(epochs_mag.info['ch_names']) == co_channels))
+
+T_obs, clusters, pval, H0 = mne.stats.spatio_temporal_cluster_1samp_test(
+    epochs_mag.get_data().transpose(0, 2, 1), connectivity=connectivity, 
+    stat_fun=lambda data: helpers.linregress_t(data, design_matrix[:, 1]), 
+    tail=0, n_permutations=1024, threshold=3)
