@@ -10,9 +10,13 @@ import numpy as np
 import mne
 from scipy.io import loadmat
 import helpers
+import statsmodels.formula.api as smf
+import pandas as pd
+import seaborn as sns
+
 
 #%% prepare epochs
-sub = 4
+sub = 5
 
 # example raw file of subject 2, block 1
 rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm02a/bm02a1.fif'
@@ -64,14 +68,37 @@ trial_info = helpers.get_5th_dot_infos(dotpos)
 names = ['intercept', 'support_correct']
 design_matrix = np.c_[np.ones(480), trial_info['support_correct']]
 
+design_matrix[:, 1] = design_matrix[np.random.randint(480, size=480), 1]
+                      
 lm = mne.stats.regression.linear_regression(epochs, design_matrix, names)
 
 #%% plot topomap of result
-def plot_topomap(x, unit):
-    x.plot_topomap(ch_type='mag', scale=1, size=1.5, vmax=np.max,
-                   unit=unit, times=np.linspace(0.4, 0.9, 10))
-
 support_correct = lm['support_correct']
-    
-plot_topomap(support_correct.beta, unit='beta')
-plot_topomap(support_correct.mlog10_p_val, unit='-log10 p')
+
+ch_type = 'mag'
+times = np.linspace(0, .7, 15)
+times = 'peaks'
+
+# plot p-values
+fig = support_correct.mlog10_p_val.plot_topomap(ch_type=ch_type, size=1.5, 
+    unit='-log10_p', vmin=0, vmax=4.0, scale=1, times=times);
+
+# extract times from titles
+times = [float(ax.get_title()[:-3]) / 1000 for ax in fig.axes[:-1]]
+
+# plot t-values
+support_correct.t_val.plot_topomap(ch_type=ch_type, size=1.5, unit='t', 
+    vmin=-4.0, vmax=4.0, scale=1, times=times);
+
+                                   
+#%% check linear regression manually
+evo = support_correct.mlog10_p_val
+chname, timeind = evo.get_peak('mag', time_as_index=True)
+chind = np.flatnonzero(np.array(evo.ch_names) == 'MEG1341')[0]
+
+df = pd.DataFrame(np.c_[data[:, chind, timeind], design_matrix[:, 1]], 
+                  columns=['data', 'support_correct'])
+
+res = smf.ols('data ~ support_correct', data=df).fit()
+
+print(res.summary())
