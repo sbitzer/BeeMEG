@@ -15,10 +15,13 @@ from statsmodels.formula.api import logit
 dotpos = helpers.load_dots(dotdir='data')
 maxrt = dotpos.shape[0] * helpers.dotdt
 trial_info = helpers.get_5th_dot_infos(dotpos)
-
+randind = np.random.randint(1, 481, size=480)
+#trial_info.support_correct = trial_info.loc[randind, 'support_correct'].values
+#trial_info.support_correct_bin = trial_info.loc[randind, 'support_correct_bin'].values
+                                            
 # use "None" for all subjects; for a single subject (e.g. "[24]") plots will
 # be shown
-subjects = [24]
+subjects = [14]
 
 if subjects is None:
     subjects = helpers.find_available_subjects()
