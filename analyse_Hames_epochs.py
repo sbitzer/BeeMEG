@@ -132,7 +132,8 @@ assert(np.all(np.array(epochs_mag.info['ch_names']) == co_channels))
 T_obs, clusters, pval, H0 = mne.stats.spatio_temporal_cluster_1samp_test(
     epochs_mag.get_data().transpose(0, 2, 1), connectivity=connectivity, 
     stat_fun=lambda data: helpers.linregress_t(data, design_matrix[:, 1]), 
-    tail=0, n_permutations=1024, threshold=3)
+    tail=0, n_permutations=1024, threshold=3, max_step=5)
 
 ax = sns.distplot(H0)
 ax.plot([np.sum(T_obs[clus]) for clus in clusters], np.zeros(len(clusters)), '*r')
+
