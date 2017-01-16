@@ -147,4 +147,3 @@ T_obs, clusters, pval, H0 = mne.stats.spatio_temporal_cluster_1samp_test(
 
 ax = sns.distplot(H0, kde=False)
 ax.plot([np.sum(T_obs[clus]) for clus in clusters], np.zeros(len(clusters)), '*r')
-
