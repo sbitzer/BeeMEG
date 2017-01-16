@@ -58,7 +58,7 @@ if mat['setc'].shape[1] == 4:
 tmin = -0.3
 
 # create MNE epochs
-epochs = mne.EpochsArray(data, info, events, tmin, event_id)
+epochs = mne.EpochsArray(data, info, events, tmin, event_id, proj=False)
 
 
 #%% build parametric regressor quantifying how much the 5th dot supports the 
@@ -72,6 +72,7 @@ design_matrix = np.c_[np.ones(480), trial_info['support_correct']]
 #design_matrix[:, 1] = design_matrix[np.random.randint(480, size=480), 1]
 
 lm = mne.stats.regression.linear_regression(epochs, design_matrix, names)
+
 
 #%% plot topomap of result
 support_correct = lm['support_correct']
@@ -104,6 +105,16 @@ res = smf.ols('data ~ support_correct', data=df).fit()
 
 print(res.summary())
 
+beta, stderr, t_val, p_val, mlog10_p_val = mne.stats.regression._fit_lm(
+    data, design_matrix, names)
+
+print('\n')
+print('t-val statsmodels: {}\n'
+      't-val linregress:  {}\n'
+      't-val mne:         {}\n'.format(res.tvalues['support_correct'],
+      helpers.linregress_t(data[:, chind, timeind][:, None], design_matrix[:, 1])[0], 
+      support_correct.t_val.data[chind, timeind]))
+
 
 #%% permutation test of identified peak
 rind = np.random.randint(480, size=(480, 10000))
@@ -134,6 +145,6 @@ T_obs, clusters, pval, H0 = mne.stats.spatio_temporal_cluster_1samp_test(
     stat_fun=lambda data: helpers.linregress_t(data, design_matrix[:, 1]), 
     tail=0, n_permutations=1024, threshold=3, max_step=5)
 
-ax = sns.distplot(H0)
+ax = sns.distplot(H0, kde=False)
 ax.plot([np.sum(T_obs[clus]) for clus in clusters], np.zeros(len(clusters)), '*r')
 
