@@ -95,7 +95,7 @@ support_correct.t_val.plot_topomap(ch_type=ch_type, size=1.5, unit='t',
 #%% check linear regression manually
 evo = support_correct.mlog10_p_val
 chname, timeind = evo.get_peak('mag', time_as_index=True)
-chind = np.flatnonzero(np.array(evo.ch_names) == 'MEG1341')[0]
+chind = np.flatnonzero(np.array(evo.ch_names) == chname)[0]
 
 df = pd.DataFrame(np.c_[data[:, chind, timeind], design_matrix[:, 1]], 
                   columns=['data', 'support_correct'])
@@ -133,3 +133,6 @@ T_obs, clusters, pval, H0 = mne.stats.spatio_temporal_cluster_1samp_test(
     epochs_mag.get_data().transpose(0, 2, 1), connectivity=connectivity, 
     stat_fun=lambda data: helpers.linregress_t(data, design_matrix[:, 1]), 
     tail=0, n_permutations=1024, threshold=3)
+
+ax = sns.distplot(H0)
+ax.plot([np.sum(T_obs[clus]) for clus in clusters], np.zeros(len(clusters)), '*r')
