@@ -105,6 +105,21 @@ res = smf.ols('data ~ support_correct', data=df).fit()
 print(res.summary())
 
 
+#%% permutation test of identified peak
+rind = np.random.randint(480, size=(480, 10000))
+perm_t_vals = helpers.linregress_t(data[:, chind, timeind][rind], 
+                                   design_matrix[:, 1])
+
+ax = sns.distplot(perm_t_vals)
+ax.plot(support_correct.t_val.data[chind, timeind], 0, 'r*')
+
+perm_p_val = np.mean(np.abs(perm_t_vals) >= 
+                     np.abs(support_correct.t_val.data[chind, timeind]))
+print('permuted p-value:   {}\n'
+      'regression p-value: {}'.format(perm_p_val, 
+      support_correct.p_val.data[chind, timeind]))
+
+
 #%% permutation cluster analysis
 connectivity, co_channels = mne.channels.read_ch_connectivity(
     '/home/bitzer/proni/BeeMEG/MEG/neuromag306mag_neighb.mat')
