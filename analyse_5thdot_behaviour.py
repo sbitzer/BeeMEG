@@ -96,3 +96,5 @@ for si, sub in enumerate(subjects):
     subject_info.loc[sub, 'logit_p'] = logitres.llr_pvalue
     if S == 1:
         print(logitres.summary())
+        
+sns.plt.show()
