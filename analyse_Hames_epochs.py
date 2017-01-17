@@ -48,7 +48,8 @@ dotpos = helpers.load_dots(dotdir='data')
 trial_info = helpers.get_5th_dot_infos(dotpos)
 
 names = ['intercept', 'support_correct']
-design_matrix = np.c_[np.ones(480), trial_info['support_correct']]
+#design_matrix = np.c_[np.ones(480), trial_info['support_correct']]
+design_matrix = np.c_[np.ones(480), np.sign(trial_info['support_correct'])]
 #design_matrix[:, 1] = design_matrix[np.random.randint(480, size=480), 1]
 
 
