@@ -142,15 +142,32 @@ def load_subject_data(subject_index, behavdatadir=defaultdir, cond=cond,
     return respRT
     
     
-def find_available_subjects(behavdatadir=defaultdir):
-    _, _, filenames = next(os.walk(behavdatadir))
-    subjects = []
-    for fname in filenames:
-        match = re.match('^(\d+)-meg.mat$', fname)
-        if match is not None:
-            subjects.append(int(match.group(1)))
+def find_available_subjects(behavdatadir=None, megdatadir=None):
+    """checks directories for data files (one per subject) and returns available subjects."""
     
-    return np.sort(np.array(subjects))
+    if behavdatadir is not None:
+        _, _, filenames = next(os.walk(behavdatadir))
+        subjects_behav = []
+        for fname in filenames:
+            match = re.match('^(\d+)-meg.mat$', fname)
+            if match is not None:
+                subjects_behav.append(int(match.group(1)))
+    if megdatadir is not None:
+        _, _, filenames = next(os.walk(megdatadir))
+        subjects_meg = []
+        for fname in filenames:
+            match = re.match('^(\d+)_sdat.mat$', fname)
+            if match is not None:
+                subjects_meg.append(int(match.group(1)))
+                
+    if megdatadir is None and behavdatadir is None:
+        raise ValueError('please provide at least one data directory')
+    elif megdatadir is not None and behavdatadir is not None:
+        return np.intersect1d(subjects_meg, subjects_behav)
+    elif megdatadir is not None:
+        return np.sort(subjects_meg)
+    else:
+        return np.sort(subjects_behav)
     
     
 def load_all_responses(behavdatadir=defaultdir, cond=cond, 
