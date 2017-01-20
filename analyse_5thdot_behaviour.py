@@ -111,15 +111,17 @@ for si, sub in enumerate(subjects):
     
     
     #%% compute logitstic regression
-    logitres = logit('is_correct_4th ~ support_correct_4th', respRT_ext).fit()
-    subject_info.loc[sub, 'logit_intercept_4th'] = logitres.params.Intercept
-    subject_info.loc[sub, 'logit_coef_4th'] = logitres.params.support_correct_4th
-    subject_info.loc[sub, 'logit_p_4th'] = logitres.llr_pvalue
+    logitres_4th = logit('is_correct_4th ~ support_correct_4th', respRT_ext).fit()
+    subject_info.loc[sub, 'logit_intercept_4th'] = logitres_4th.params.Intercept
+    subject_info.loc[sub, 'logit_coef_4th'] = logitres_4th.params.support_correct_4th
+    subject_info.loc[sub, 'logit_p_4th'] = logitres_4th.llr_pvalue
     logitres = logit('is_correct ~ support_correct', respRT_ext).fit()
     subject_info.loc[sub, 'logit_intercept'] = logitres.params.Intercept
     subject_info.loc[sub, 'logit_coef'] = logitres.params.support_correct
     subject_info.loc[sub, 'logit_p'] = logitres.llr_pvalue
     if S == 1:
-        print(logitres.summary())
+        print(logitres_4th.summary())
+        
+    
         
 sns.plt.show()
