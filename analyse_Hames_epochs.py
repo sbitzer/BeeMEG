@@ -47,9 +47,9 @@ connectivity, co_channels = mne.channels.read_ch_connectivity(
 dotpos = helpers.load_dots(dotdir='data')
 trial_info = helpers.get_5th_dot_infos(dotpos)
 
-names = ['intercept', 'support_correct']
-#design_matrix = np.c_[np.ones(480), trial_info['support_correct']]
-design_matrix = np.c_[np.ones(480), np.sign(trial_info['support_correct'])]
+names = ['intercept', 'support_correct_4th']
+#design_matrix = np.c_[np.ones(480), trial_info['support_correct_4th']]
+design_matrix = np.c_[np.ones(480), np.sign(trial_info['support_correct_4th'])]
 #design_matrix[:, 1] = design_matrix[np.random.randint(480, size=480), 1]
 
 
@@ -103,7 +103,7 @@ for sub in subjects:
         lm = mne.stats.regression.linear_regression(epochs, design_matrix, names)
 
         #%% plot topomap of result
-        support_correct = lm['support_correct']
+        support_correct = lm['support_correct_4th']
         
         ch_type = 'mag'
         times = np.linspace(0, .7, 15)

@@ -96,12 +96,18 @@ def get_5th_dot_infos(dotpos):
     # penalty. By multiplying the 5th dot position with the (sign of) the correct
     # choice we can flip that relationship such that a larger value always 
     # indicates greater support for the correct choice.
-    trial_info['support_correct'] = dotpos[4, 0, :] * trial_info['correct_4th']
+    trial_info['support_correct_4th'] = dotpos[4, 0, :] * trial_info['correct_4th']
+    
+    # same thing, but based on 'true correct'
+    trial_info['support_correct'] = dotpos[4, 0, :] * np.sign(
+        dotpos[:, 0, :].mean(axis=0))
     
     # bin 5th dot positions
     # the manipulated 5th dot positions were 64 pixels apart and the used values
     # were [-25, 25] + [-160, -96, -32, 32, 96, 160]
     bins = np.r_[-300, np.arange(-160, 200, 64), 300]
+    trial_info['support_correct_bin_4th'] = np.digitize(
+        trial_info['support_correct_4th'], bins)
     trial_info['support_correct_bin'] = np.digitize(
         trial_info['support_correct'], bins)
     
