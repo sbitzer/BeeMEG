@@ -22,7 +22,7 @@ randind = np.random.randint(1, 481, size=480)
 
 # use "None" for all subjects; for a single subject (e.g. "[24]") plots will
 # be shown
-subjects = None
+subjects = 14
 if len(sys.argv) > 1:
     if sys.argv[1] == 'None':
         subjects = None
@@ -33,7 +33,7 @@ if len(sys.argv) > 1:
     
 if subjects is None:
     subjects = helpers.find_available_subjects(helpers.defaultdir)
-subjects = np.sort(np.array(subjects))
+subjects = np.sort(np.atleast_1d(subjects))
 S = subjects.size
     
 subject_info = pd.DataFrame([], index=pd.Index(subjects, name='subject'))
@@ -79,14 +79,19 @@ for si, sub in enumerate(subjects):
         B = respRT_ext['support_correct_bin_4th'].unique().size
         binpenalty = np.zeros(B)
         frac_correct = np.zeros(B)
-        medianRT = np.zeros(B)
+        medianRT = np.zeros((B, 3))
+        median_names = ['full bin', 'follow 5th dot', 'against 5th dot']
         
         for i in range(B):
             binind = respRT_ext['support_correct_bin_4th']==i+1
             binpenalty[i] = respRT_ext.loc[binind, 'penalty_4th'].mean()
             frac_correct[i] = np.mean(respRT_ext.loc[binind, 'correct_4th'] == 
                                       respRT_ext.loc[binind, 'response'])
-            medianRT[i] = respRT_ext.loc[binind, 'RT'].median()
+            medianRT[i, 0] = respRT_ext.loc[binind, 'RT'].median()
+            medianRT[i, 1] = respRT_ext.loc[binind & (respRT_ext.response ==
+                np.sign(respRT_ext['5th_dot'])), 'RT'].median()
+            medianRT[i, 2] = respRT_ext.loc[binind & (respRT_ext.response !=
+                np.sign(respRT_ext['5th_dot'])), 'RT'].median()
     
         sns.plt.figure()
         sns.plt.plot(binpenalty)
@@ -100,6 +105,7 @@ for si, sub in enumerate(subjects):
         
         sns.plt.figure()
         sns.plt.plot(medianRT)
+        sns.plt.legend(median_names)
         sns.plt.xlabel('support for correct choice')
         sns.plt.ylabel('median RT')
     
