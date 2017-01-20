@@ -22,7 +22,7 @@ randind = np.random.randint(1, 481, size=480)
 
 # use "None" for all subjects; for a single subject (e.g. "[24]") plots will
 # be shown
-subjects = 14
+subjects = None
 if len(sys.argv) > 1:
     if sys.argv[1] == 'None':
         subjects = None
@@ -41,6 +41,10 @@ subject_info = pd.DataFrame([], index=pd.Index(subjects, name='subject'))
 for si, sub in enumerate(subjects):
     respRT = helpers.load_subject_data(sub)
     respRT_ext = pd.concat([respRT, trial_info], axis=1)
+    
+    #%% drop trials in which the subject responded too fast
+    respRT_ext.drop(respRT_ext.index[respRT_ext.RT < 0.55], inplace=True)
+    
     
     #%% check whether subject responded correctly according to first 4 dots
     respRT_ext['is_correct_4th'] = (respRT_ext.correct_4th == 
