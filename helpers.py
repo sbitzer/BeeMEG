@@ -16,14 +16,19 @@ from numba import jit
 
 dotfile = 'batch_dots_pv2.mat'
 
-defaultdir = os.path.join('data', 'meg_behav')
+# directories
+basedir = 'data'
+behavdatadir = os.path.join(basedir, 'meg_behav')
+megdatadir = os.path.join(basedir, 'meg_final_data')
+resultsdir = os.path.join(basedir, 'inf_results')
+
 toresponse = np.r_[0, 5.0]
 cond = 25
 dotdt = 0.1
 dotstd = 70.
 
 
-def load_dots(dotfile=dotfile, dotdir=defaultdir):
+def load_dots(dotfile=dotfile, dotdir=basedir):
     # get dot positions
     mat = loadmat(os.path.join(dotdir, dotfile), 
                   variable_names=['xdots_n', 'ydots_n'])
@@ -114,7 +119,7 @@ def get_5th_dot_infos(dotpos):
     return trial_info
     
     
-def load_subject_data(subject_index, behavdatadir=defaultdir, cond=cond, 
+def load_subject_data(subject_index, behavdatadir=behavdatadir, cond=cond, 
                       toresponse=toresponse):
     """Load responses of a subject, recode to -1, 0, 1 for left, timed-out, right."""
     
@@ -176,7 +181,7 @@ def find_available_subjects(behavdatadir=None, megdatadir=None):
         return np.sort(subjects_behav)
     
     
-def load_all_responses(behavdatadir=defaultdir, cond=cond, 
+def load_all_responses(behavdatadir=behavdatadir, cond=cond, 
                        toresponse=toresponse):
     subjects = find_available_subjects(behavdatadir)
     

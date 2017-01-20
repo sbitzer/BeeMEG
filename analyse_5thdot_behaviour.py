@@ -13,7 +13,7 @@ import seaborn as sns
 from statsmodels.formula.api import logit
 import sys
 
-dotpos = helpers.load_dots(dotdir='data')
+dotpos = helpers.load_dots()
 maxrt = dotpos.shape[0] * helpers.dotdt
 trial_info = helpers.get_5th_dot_infos(dotpos)
 randind = np.random.randint(1, 481, size=480)
@@ -22,7 +22,7 @@ randind = np.random.randint(1, 481, size=480)
 
 # use "None" for all subjects; for a single subject (e.g. "[24]") plots will
 # be shown
-subjects = None
+subjects = 3
 if len(sys.argv) > 1:
     if sys.argv[1] == 'None':
         subjects = None
@@ -32,7 +32,7 @@ if len(sys.argv) > 1:
         subjects = [int(sys.argv[1])]
     
 if subjects is None:
-    subjects = helpers.find_available_subjects(helpers.defaultdir)
+    subjects = helpers.find_available_subjects(helpers.behavdatadir)
 subjects = np.sort(np.atleast_1d(subjects))
 S = subjects.size
     

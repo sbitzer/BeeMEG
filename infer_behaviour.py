@@ -23,14 +23,11 @@ import helpers
 # which models to fit?
 models = ('basic', 'collapse')
 
-# base dir
-basedir = 'data'
-
 # where's the data?
-megdatadir = os.path.join(basedir, 'meg_behav')
+behavdatadir = helpers.behavdatadir
 
 # where should results be?
-resultsdir = os.path.join(basedir, 'inf_results')
+resultsdir = helpers.resultsdir
 
 # which subjects to fit this time (either None for all or a list of numbers)
 subjects = None
@@ -74,12 +71,12 @@ NP = 15000
 
 # get subject indeces
 if subjects is None:
-    subjects = helpers.find_available_subjects(megdatadir)
+    subjects = helpers.find_available_subjects(behavdatadir)
             
 subjects = np.sort(np.array(subjects))
 S = len(subjects)
 
-dotpos = helpers.load_dots(dotdir=basedir)
+dotpos = helpers.load_dots()
 D, _, L = dotpos.shape
 
 dotstd = helpers.dotstd
@@ -154,7 +151,7 @@ for mname in models:
                               'dtmode', 'ndt_vs_RT'] + list(pars.names)))
     for si, sub in enumerate(subjects):
         # load data
-        respRT = helpers.load_subject_data(sub, megdatadir)
+        respRT = helpers.load_subject_data(sub, behavdatadir)
         
         # data trials need to be in the order corresponding to the one in the 
         # model, remember that indeces in respRT start at 1, not 0

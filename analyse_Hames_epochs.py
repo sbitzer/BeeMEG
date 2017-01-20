@@ -17,12 +17,12 @@ import collections
 
 
 #%%
-subjects = None
+subjects = 3
 
 if subjects is None:
-    subjects = helpers.find_available_subjects('data/meg_behav', 
-                                               'data/meg_final_data')
-subjects = np.sort(np.array(subjects))
+    subjects = helpers.find_available_subjects(helpers.behavdatadir, 
+                                               helpers.megdatadir)
+subjects = np.sort(np.atleast_1d(subjects))
 S = subjects.size
 if S > 1:
     fname = pd.datetime.now().strftime('clusres_5thdot_meg_%Y%m%d%H%M')
@@ -44,7 +44,7 @@ connectivity, co_channels = mne.channels.read_ch_connectivity(
 
 #%% build parametric regressor quantifying how much the 5th dot supports the 
 #  corrrect decision
-dotpos = helpers.load_dots(dotdir='data')
+dotpos = helpers.load_dots()
 trial_info = helpers.get_5th_dot_infos(dotpos)
 
 names = ['intercept', 'support_correct_4th']
