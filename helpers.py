@@ -44,9 +44,26 @@ def load_dots(dotfile=dotfile, dotdir=basedir):
     return dotpos
 
 
-def get_5th_dot_infos(dotpos):
+def get_ideal_observer(dotpos=None):
+    if dotpos is None:
+        dotpos = load_dots()
     D = dotpos.shape[0]
     
+    feature_means = np.c_[[-cond, 0], [cond, 0]]
+    model = rtmodels.discrete_static_gauss(dt=dotdt, maxrt=dotdt*D, 
+                                           toresponse=toresponse, 
+                                           choices=[-1, 1], Trials=dotpos, 
+                                           means=feature_means)
+    
+    # set ideal observer parameters
+    model.intstd = dotstd
+    model.noisestd = 1e-15
+    model.prior = 0.5
+    
+    return model
+
+
+def get_5th_dot_infos(dotpos):
     # make batch indices: a batch collects all trials with common dot positions
     # except for the 5th dot position
     
@@ -68,16 +85,7 @@ def get_5th_dot_infos(dotpos):
                               name='trial'), columns=['batch'])
     
     # get "correct" decision after 4th dot from ideal observer
-    feature_means = np.c_[[-cond, 0], [cond, 0]]
-    model = rtmodels.discrete_static_gauss(dt=dotdt, maxrt=dotdt*D, 
-                                           toresponse=toresponse, 
-                                           choices=[-1, 1], Trials=dotpos, 
-                                           means=feature_means)
-    
-    # set ideal observer parameters
-    model.intstd = dotstd
-    model.noisestd = 1e-15
-    model.prior = 0.5
+    model = get_ideal_observer(dotpos)
     
     # generate log-posterior beliefs
     logpost, _ = model.compute_logpost_from_features(np.arange(480))
