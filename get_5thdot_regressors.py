@@ -6,6 +6,7 @@ Created on Fri Jan 20 18:45:48 2017
 @author: bitzer
 """
 
+import os
 import numpy as np
 import pandas as pd
 import helpers
@@ -21,8 +22,11 @@ doti = pd.Index(np.arange(25)+1, name='dot')
 dotpos = helpers.load_dots()
 trial_info = helpers.get_5th_dot_infos(dotpos)
 
+infresult_file = 'infres_collapse_201612121759.npz'
+
 
 #%% trial
+
 # correct
 subinfo = helpers.load_subject_data(2)
 trial = pd.DataFrame(subinfo['stimulus']).sort_index()
@@ -59,28 +63,53 @@ trial_dots['support_previous_ideal'] = trial_dots.correct_ideal * trial_dots.dot
 
 
 #%% subject
+
+# accuracy, median RT, std RT
+allresp = helpers.load_all_responses()
+subject = pd.DataFrame({'accuracy': allresp['correct'].mean(level='subject'),
+                        'medianRT': allresp['RT'].median(level='subject'),
+                        'stdRT': allresp['RT'].std(level='subject')})
+
+# accuracy for ideal observer correct
+correct_ideal, _ = model.gen_response_from_logpost(logpost)
+# necessary, because order of trials is still as in experiment
+allresp_sorted = allresp.sort_index()
+# 
+subject['accuracy_ideal'] = (allresp_sorted.response.values.reshape((36, 480), 
+    order='C') == correct_ideal[:, 0]).mean(1)
+
 # model parameters
-
-# median RT
-
-# std RT
-
-# accuracy
+with np.load(os.path.join(helpers.resultsdir, infresult_file)) as data:
+    ep_summary = pd.DataFrame(data['ep_summary'].astype(float), index=subjecti, 
+                              columns=data['ep_summary_cols'].astype(str))
+subject = pd.concat([subject, ep_summary[['ndtmode', 'dtmode', 'ndt_vs_RT', 
+    'ndtspread', 'noisestd', 'bound', 'bshape', 'bstretch', 'prior', 
+    'lapseprob', 'lapsetoprob']]], axis=1)
 
 
 #%% subject x trial
-# posterior entropy
 
-# response
+# response, RT and is_correct
+subject_trial = allresp_sorted.copy()
+subject_trial.rename(columns={'correct': 'is_correct'}, inplace=True)
 
-# error
-
-# RT
+# is_correct_ideal
+subject_trial['is_correct_ideal'] = (allresp_sorted.response.values.reshape(
+    (36, 480), order='C') == correct_ideal[:, 0]).flatten(order='C')
 
 # trial index (time in experiment)
+for sub in subjecti:
+    # +1 so that time in trials starts at 1
+    subject_trial.loc[sub, 'trial_time'] = allresp.loc[sub, :].index.argsort() + 1
+
+subject_trial['trial_time'] = subject_trial['trial_time'].astype('int32')
+
+# posterior entropy
+subject_trial['entropy'] = posterior_entropies.estimate().flatten(order='C')
 
 
 #%% subject x trial x dots
+
 # surprise
 
 # log_posterior_odds

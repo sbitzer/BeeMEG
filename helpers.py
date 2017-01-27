@@ -44,7 +44,7 @@ def load_dots(dotfile=dotfile, dotdir=basedir):
     return dotpos
 
 
-def get_ideal_observer(dotpos=None):
+def get_ideal_observer(dotpos=None, bound=0.8):
     if dotpos is None:
         dotpos = load_dots()
     D = dotpos.shape[0]
@@ -59,6 +59,9 @@ def get_ideal_observer(dotpos=None):
     model.intstd = dotstd
     model.noisestd = 1e-15
     model.prior = 0.5
+    model.lapseprob = 0.0
+    model.ndtmean = -100
+    model.bound = bound
     
     return model
 
