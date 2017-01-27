@@ -10,7 +10,7 @@ import os
 import numpy as np
 import pandas as pd
 import helpers
-import posterior_entropies
+import posterior_model_measures
 
 
 #%%
@@ -105,13 +105,9 @@ for sub in subjecti:
 subject_trial['trial_time'] = subject_trial['trial_time'].astype('int32')
 
 # posterior entropy
-subject_trial['entropy'] = posterior_entropies.estimate().flatten(order='C')
+subject_trial['entropy'] = posterior_model_measures.estimate().flatten(order='C')
 
 
 #%% subject x trial x dots
 
-# surprise
-
-# log_posterior_odds
-
-# momentary_evidence
+subject_trial_dot = posterior_model_measures.get_dot_level_measures()
