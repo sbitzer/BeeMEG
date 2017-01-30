@@ -95,19 +95,36 @@ def get_dot_level_measures(fname='infres_collapse_201612121759.npz',
                     # uses prior stored in model)
                     surprise[:, :, s] = model.compute_surprise(logpost[:, :, :, s], 
                                                                loglik[:, :, :, s])
+                    
+                    # sample decisions from the computed log-posteriors
+                    ch, rt = model.gen_response_from_logpost(logpost[:, :, :, s],
+                            ndt=False, lapses=True)
+                    # nan those values which are past the decisions
+                    # (the returned RT is in real time; by dividing through the
+                    # model's dt you get the first time bin past the decision,
+                    # because index 0 in log_post is after dt in real time and
+                    # only lapse trials can have rt below dt)
+                    ind = np.rint(rt[:, 0] / model.dt)
+                    for tr, t in enumerate(ind):
+                        logpost[t:, :, tr, s] = np.nan
+                        loglik[t:, :, tr, s] = np.nan
+                        surprise[t:, tr, s] = np.nan
+                    
+                    # print progress
                     if ( np.floor(s / S * 100) < np.floor((s+1) / S * 100) ):
                         print('\r... %3d%% completed' % (np.floor((s+1) / S * 100)), end='');
                 print('')    
                 
                 # expected values
-                dot_level.loc[sub, 'logpost_left'] = np.mean(logpost[:, 0, :, :], 
+                dot_level.loc[sub, 'logpost_left'] = np.nanmean(
+                        logpost[:, 0, :, :], axis=2).flatten(order='F')
+                dot_level.loc[sub, 'loglik_left'] = np.nanmean(
+                        loglik[:, 0, :, :], axis=2).flatten(order='F')
+                dot_level.loc[sub, 'm_evidence_left'] = np.nanmean(
+                        loglik[:, 0, :, :] - loglik[:, 1, :, :], 
                         axis=2).flatten(order='F')
-                dot_level.loc[sub, 'loglik_left'] = np.mean(loglik[:, 0, :, :], 
+                dot_level.loc[sub, 'surprise'] = np.nanmean(surprise, 
                         axis=2).flatten(order='F')
-                dot_level.loc[sub, 'm_evidence_left'] = np.mean(loglik[:, 0, :, :] -
-                        loglik[:, 1, :, :], axis=2).flatten(order='F')
-                dot_level.loc[sub, 'surprise'] = np.mean(surprise, axis=2).flatten(
-                        order='F')
                 
                 store['dot_level'] = dot_level
     
