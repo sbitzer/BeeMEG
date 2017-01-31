@@ -11,7 +11,7 @@ import pandas as pd
 import helpers
 
 def get_dot_level_measures(fname='infres_collapse_201612121759.npz', 
-                           resultsdir=helpers.resultsdir, S=2000):
+                           resultsdir=helpers.resultsdir, S=2000, Smin=20):
     """Returns dot-level posterior model measures.
     
         Measures are computed from the model for each subject, trial and 
@@ -30,6 +30,10 @@ def get_dot_level_measures(fname='infres_collapse_201612121759.npz',
         S : int, optional
             number of samples to draw from the parameter posterior
             ignored when measures loaded from file
+        Smin : int, optional
+            all returned measure averages which are based on less than Smin 
+            values will be NaN, supposed to prevent too large variance in
+            returned averages
             
         Returns
         -------
@@ -50,8 +54,9 @@ def get_dot_level_measures(fname='infres_collapse_201612121759.npz',
         with pd.HDFStore(resfile, mode='r') as store:
             dot_level = store['dot_level']
             S = store['S']
+            Smin = store['Smin']
         
-        print('Loaded dot-level measures from file (S=%d)!' % S)
+        print('Loaded dot-level measures from file (S=%d, Smin=%d)!' % (S, Smin))
     else:
         with np.load(os.path.join(resultsdir, fname)) as data:
             subjects = data['subjects']
@@ -68,6 +73,7 @@ def get_dot_level_measures(fname='infres_collapse_201612121759.npz',
     
         with pd.HDFStore(resfile, mode='w', complevel=7, complib='zlib') as store:
             store['S'] = pd.Series(S, name='S')
+            store['Smin'] = pd.Series(Smin, name='Smin')
             for i, sub in enumerate(subjects):
                 print('computing dot-level measures for subject %d ...' % sub)
                 
@@ -104,7 +110,7 @@ def get_dot_level_measures(fname='infres_collapse_201612121759.npz',
                     # model's dt you get the first time bin past the decision,
                     # because index 0 in log_post is after dt in real time and
                     # only lapse trials can have rt below dt)
-                    ind = np.rint(rt[:, 0] / model.dt)
+                    ind = np.rint(rt[:, 0] / model.dt).astype(int)
                     for tr, t in enumerate(ind):
                         logpost[t:, :, tr, s] = np.nan
                         loglik[t:, :, tr, s] = np.nan
@@ -113,18 +119,27 @@ def get_dot_level_measures(fname='infres_collapse_201612121759.npz',
                     # print progress
                     if ( np.floor(s / S * 100) < np.floor((s+1) / S * 100) ):
                         print('\r... %3d%% completed' % (np.floor((s+1) / S * 100)), end='');
-                print('')    
+                print('')
                 
                 # expected values
                 dot_level.loc[sub, 'logpost_left'] = np.nanmean(
-                        logpost[:, 0, :, :], axis=2).flatten(order='F')
+                        logpost[:, 0, :, :], axis=2).flatten('F')
+                dot_level.loc[sub, 'logpost_right'] = np.nanmean(
+                        logpost[:, 1, :, :], axis=2).flatten('F')
                 dot_level.loc[sub, 'loglik_left'] = np.nanmean(
-                        loglik[:, 0, :, :], axis=2).flatten(order='F')
+                        loglik[:, 0, :, :], axis=2).flatten('F')
+                dot_level.loc[sub, 'loglik_right'] = np.nanmean(
+                        loglik[:, 1, :, :], axis=2).flatten('F')
                 dot_level.loc[sub, 'm_evidence_left'] = np.nanmean(
                         loglik[:, 0, :, :] - loglik[:, 1, :, :], 
-                        axis=2).flatten(order='F')
+                        axis=2).flatten('F')
                 dot_level.loc[sub, 'surprise'] = np.nanmean(surprise, 
-                        axis=2).flatten(order='F')
+                        axis=2).flatten('F')
+                
+                # set all those averages to NaN which are only based on less
+                # than Smin values
+                ind = (S - np.isnan(surprise).sum(axis=2)) < Smin
+                dot_level.loc[ind.flatten('F'), :] = np.nan
                 
                 store['dot_level'] = dot_level
     
@@ -198,6 +213,7 @@ def get_entropies(fname='infres_collapse_201612121759.npz',
                                 entropies=entropies, S=S, entropy_bins=entropy_bins)
             
     return entropies
+
 
 # run as script, if called
 if __name__ == '__main__':
