@@ -33,15 +33,15 @@ trial = pd.DataFrame(subinfo['stimulus']).sort_index()
 trial.rename(columns={'stimulus': 'correct'}, inplace=True)
 
 #%% trial x dots
-trial_dots = pd.DataFrame([], index=pd.MultiIndex.from_product([triali, doti], 
+trial_dot = pd.DataFrame([], index=pd.MultiIndex.from_product([triali, doti], 
                           names=['trial', 'dot']))
 
 # dotpos
-trial_dots['dot_x'] = dotpos[:, 0, :].flatten('F')
-trial_dots['dot_y'] = dotpos[:, 1, :].flatten('F')
+trial_dot['dot_x'] = dotpos[:, 0, :].flatten('F')
+trial_dot['dot_y'] = dotpos[:, 1, :].flatten('F')
 
 # support_correct
-trial_dots['support_correct'] = (dotpos[:, 0, :] * trial.correct.values).flatten('F')
+trial_dot['support_correct'] = (dotpos[:, 0, :] * trial.correct.values).flatten('F')
 
 # create ideal observer model
 model = helpers.get_ideal_observer()
@@ -55,11 +55,11 @@ logpost, _ = model.compute_logpost_from_features(np.arange(480))
 # (noisestd is set to 1e-15) which is the case in rare cases for the cumulative
 # sum of dot positions; therefore, the sign of the cumulative sum of dot 
 # positions is sometimes (rarely) 0 while correct_ideal here is always 1 or -1
-trial_dots['correct_ideal'] = model.choices[np.argmax(logpost[:, :, :, 0], 
+trial_dot['correct_ideal'] = model.choices[np.argmax(logpost[:, :, :, 0], 
     axis=1)].flatten('F')
 
 # support_previous_ideal
-trial_dots['support_previous_ideal'] = trial_dots.correct_ideal * trial_dots.dot_x
+trial_dot['support_previous_ideal'] = trial_dot.correct_ideal * trial_dot.dot_x
 
 
 #%% subject
