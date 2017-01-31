@@ -105,7 +105,7 @@ for sub in subjecti:
 subject_trial['trial_time'] = subject_trial['trial_time'].astype('int32')
 
 # posterior entropy
-subject_trial['entropy'] = posterior_model_measures.estimate().flatten(order='C')
+subject_trial['entropy'] = posterior_model_measures.get_entropies().flatten(order='C')
 
 
 #%% subject x trial x dots
