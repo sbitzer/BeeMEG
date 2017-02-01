@@ -14,6 +14,7 @@ import statsmodels.formula.api as smf
 import pandas as pd
 import seaborn as sns
 import collections
+import single_subject_DM
 
 
 #%%
@@ -165,10 +166,22 @@ for sub in subjects:
     # channels must have the same order
     assert(np.all(np.array(epochs_mag.info['ch_names']) == co_channels))
     
+    DM = single_subject_DM.get_ithdot_DM(sub, 5)
+    DM = DM[['dot_y', 'surprise', 'logpost_left', 'entropy', 'trial_time', 
+         'intercept']]
+
+    DM['logpost_left'] = DM['logpost_left'] - np.log(0.5)
+    DM['entropy'] = DM['entropy']- DM['entropy'].mean()
+    DM['surprise'] = DM['surprise'] - DM['surprise'].mean()
+
+    ind = np.logical_not(np.isnan(DM['surprise'])).values
+    regi = np.array([1])
+    
     T_obs, clusters, pval, H0 = mne.stats.spatio_temporal_cluster_1samp_test(
         epochs_mag.get_data().transpose(0, 2, 1), connectivity=connectivity, 
-        stat_fun=lambda data: helpers.linregress_t(data, design_matrix[:, 1]), 
-        tail=0, n_permutations=1024, threshold=3, max_step=1)
+        stat_fun=lambda data: helpers.glm_t(data[ind, :], 
+        DM.values[ind, :], regi)[:, 0], tail=0, n_permutations=1024, threshold=3, 
+        max_step=1)
     
     max_cluster_p.loc[sub] = pval.min()
     clus_res[sub] = cluster_result(T_obs, clusters, pval, H0)

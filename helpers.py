@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import re
 import rtmodels
-from numba import jit
+import numba
 
 dotfile = 'batch_dots_pv2.mat'
 
@@ -213,7 +213,7 @@ def load_all_responses(behavdatadir=behavdatadir, cond=cond,
     return allresp
     
 
-@jit(nopython=True)
+@numba.jit(nopython=True)
 def linregress_t(data, predictors):
     """computes t-values for the slope of data = slope*predictor + intercept
     
@@ -262,4 +262,52 @@ def linregress_t(data, predictors):
         
         tvals[i] = r * np.sqrt(df / ((1.0 - r + TINY)*(1.0 + r + TINY)))
     
+    return tvals
+
+
+@numba.jit((numba.float64[:,:], numba.float64[:,:], 
+            numba.optional(numba.int64[:])), nopython=True)
+def glm_t(data, DM, selecti):
+    """Compute t-values for regressors in a GLM with ordinary least squares.
+    
+        Computations are taken from Wikipedia_ and cross-checked with 
+        statsmodels.
+        
+        Parameters
+        ----------
+        data : 2D-array (observations x data sets)
+            the data to be fitted with the GLM
+            
+        DM : 2D-array (observations x regressors)
+            the design matrix
+            
+        selecti : 1D-array of ints, or None
+            indeces of regressors for which t-values should be returned
+            
+        Returns
+        -------
+        tvals : 2D-array (data sets x number of selected regressors)
+            the computed t-values of the selected regressors
+        
+        .. _Wikipedia: https://en.wikipedia.org/wiki/Ordinary_least_squares
+    """
+    N, M = data.shape
+    P = DM.shape[1]
+    
+    if selecti is None:
+        selecti = np.arange(P)
+    O = selecti.size
+    selecti = selecti.astype(np.uint64)
+    
+    DM2inv = np.linalg.inv(np.dot(DM.T, DM))
+    DM2inv_diag = np.diag(DM2inv)
+    
+    tvals = np.zeros((M, O))
+    for i in range(M):
+        beta = np.dot(np.dot(DM2inv, DM.T), data[:, i])
+        resid = data[:, i] - np.dot(DM, beta)
+        s2 = np.dot(resid.T, resid) / (N - P)
+        sei = np.sqrt(s2 * DM2inv_diag[selecti])
+        tvals[i, :] = beta[selecti] / sei
+        
     return tvals
