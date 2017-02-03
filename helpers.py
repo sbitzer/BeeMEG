@@ -13,6 +13,7 @@ import pandas as pd
 import re
 import rtmodels
 import numba
+import mne
 
 dotfile = 'batch_dots_pv2.mat'
 
@@ -211,6 +212,100 @@ def load_all_responses(behavdatadir=behavdatadir, cond=cond,
     allresp = allresp.reorder_levels(['subject', 'trial'])
     
     return allresp
+    
+
+def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag', 
+                    megdatadir=megdatadir):
+    
+    fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s.h5' % (hfreq,
+            sfreq, window[0], window[1], chtype)
+    file = os.path.join(megdatadir, fname)
+    
+    if os.path.isfile(file):
+        return pd.read_hdf(file)
+    else:
+        subjects = find_available_subjects(megdatadir=megdatadir)
+        
+        # create events array
+        events = np.c_[np.arange(480), np.full(480, 301, dtype=int), 
+                       np.zeros(480, dtype=int)]
+        
+        # type of event
+        event_id = {'dot_onset': 0}
+        
+        # when does an epoch start? - 0.3 s before onset of the first dot
+        tmin = -0.3
+        
+        # channel connectivity from FieldTrip for cluster analysis
+        connectivity, co_channels = mne.channels.read_ch_connectivity(
+            '/home/bitzer/proni/BeeMEG/MEG/neuromag306mag_neighb.mat')
+        
+        fresh = True
+        for sub in subjects:
+            print('loading subject %2d' % sub)
+            try:
+                # raw file of subject, block 1
+                rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm%02da/bm%02da1.fif' % (sub, sub)
+                
+                # get MEG-info from raw file (for channel layout and names)
+                info = mne.io.read_info(rawfile)
+            except FileNotFoundError:
+                # just use last working info - for now it shouldn't matter
+                pass
+        
+            # Hame has downsampled to 4ms per sample
+            info['sfreq'] = 1 / 0.004
+        
+            # load Hame's epoched data
+            # conveniently, the order of the channels in the matlab data is the same as
+            # the order given by the raw fif-file (see channel_names.mat which I extracted
+            # from variable hdr in one of the files in meg_original_data)
+            mat = loadmat('data/meg_final_data/%02d_sdat.mat' % sub)
+        
+            # construct full data array corresponding to the channels defined in info
+            data = np.zeros((480, 313, 301))
+            # MEG data
+            data[:, :306, :] = mat['smeg']
+            # EOG + ECG
+            data[:, 306:309, :] = mat['setc'][:, :3, :]
+            # triggers (STI101) - Hame must have added this manually as I can't see where
+            # it was added in her Matlab scripts, but the time-courses and values 
+            # definitely suggest that it's STI101
+            # NOT PRESENT FOR ALL SUBJECTS
+            if mat['setc'].shape[1] == 4:
+                data[:, 310, :] = mat['setc'][:, 3, :]
+        
+            # create MNE epochs
+            epochs = mne.EpochsArray(data, info, events, tmin, event_id, proj=False)
+            
+            # pick specific channels
+            epochs = epochs.pick_types(meg=chtype)
+            
+            # resample
+            epochs = epochs.resample(sfreq)
+            
+            # select time points for 5th dot
+            epochs = epochs.crop(*window)
+            
+            # smooth
+            epochs.savgol_filter(hfreq)
+            
+            # get in data frame with my index
+            df = epochs.to_data_frame()
+            df.index = pd.MultiIndex.from_product([[sub], np.arange(480)+1, 
+                    df.index.levels[2]], names=['subject', 'trial', 'time'])
+            
+            if fresh:
+                epochs_all = df
+                fresh = False
+            else:
+                epochs_all = pd.concat([epochs_all, df], axis=0)
+            
+            print('')
+            
+            epochs_all.to_hdf(file, 'epochs_all', mode='w', complevel=7, complib='zlib')
+    
+    return fname
     
 
 @numba.jit(nopython=True)
