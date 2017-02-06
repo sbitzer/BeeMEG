@@ -139,7 +139,10 @@ def get_dot_level_measures(fname='infres_collapse_201612121759.npz',
                 # set all those averages to NaN which are only based on less
                 # than Smin values
                 ind = (S - np.isnan(surprise).sum(axis=2)) < Smin
-                dot_level.loc[ind.flatten('F'), :] = np.nan
+                # NOTE that this provides a view of dot_level for subject sub
+                dot_level_sub = dot_level.loc[sub]
+                # this change will affect dot_level
+                dot_level_sub.loc[ind.flatten('F'), :] = np.nan
                 
                 store['dot_level'] = dot_level
     
