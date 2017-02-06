@@ -306,6 +306,79 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
             epochs_all.to_hdf(file, 'epochs_all', mode='w', complevel=7, complib='zlib')
     
     return fname
+
+
+def load_evoked_container(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag', 
+                          megdatadir=megdatadir):
+    
+    fname = 'evoked_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s-ave.fif' % (hfreq,
+            sfreq, window[0], window[1], chtype)
+    file = os.path.join(megdatadir, fname)
+    
+    if os.path.isfile(file):
+        return mne.read_evokeds(file, proj=False)[0]
+    else:
+        sub = 2
+        
+        # create events array
+        events = np.c_[np.arange(480), np.full(480, 301, dtype=int), 
+                       np.zeros(480, dtype=int)]
+        
+        # type of event
+        event_id = {'dot_onset': 0}
+        
+        # when does an epoch start? - 0.3 s before onset of the first dot
+        tmin = -0.3
+        
+        # raw file of subject, block 1
+        rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm%02da/bm%02da1.fif' % (sub, sub)
+        
+        # get MEG-info from raw file (for channel layout and names)
+        info = mne.io.read_info(rawfile)
+        
+        # Hame has downsampled to 4ms per sample
+        info['sfreq'] = 1 / 0.004
+        
+        # load Hame's epoched data
+        # conveniently, the order of the channels in the matlab data is the same as
+        # the order given by the raw fif-file (see channel_names.mat which I extracted
+        # from variable hdr in one of the files in meg_original_data)
+        mat = loadmat('data/meg_final_data/%02d_sdat.mat' % sub)
+        
+        # construct full data array corresponding to the channels defined in info
+        data = np.zeros((480, 313, 301))
+        # MEG data
+        data[:, :306, :] = mat['smeg']
+        # EOG + ECG
+        data[:, 306:309, :] = mat['setc'][:, :3, :]
+        # triggers (STI101) - Hame must have added this manually as I can't see where
+        # it was added in her Matlab scripts, but the time-courses and values 
+        # definitely suggest that it's STI101
+        # NOT PRESENT FOR ALL SUBJECTS
+        if mat['setc'].shape[1] == 4:
+            data[:, 310, :] = mat['setc'][:, 3, :]
+        
+        # create MNE epochs
+        epochs = mne.EpochsArray(data, info, events, tmin, event_id, proj=False)
+        
+        # pick specific channels
+        epochs = epochs.pick_types(meg=chtype)
+        
+        # resample
+        epochs = epochs.resample(sfreq)
+        
+        # select time points for 5th dot
+        epochs = epochs.crop(*window)
+        
+        # smooth
+        epochs.savgol_filter(hfreq)
+        
+        evoked = epochs.average()
+        
+        evoked.save(file)
+        
+    return evoked
+    
     
 
 @numba.jit(nopython=True)
