@@ -21,7 +21,7 @@ import statsmodels.api as sm
 method = 'ss'
 
 # where to store
-file = os.path.join(helpers.resultsdir, 'meg_hierarchical_' + method + '.h5')
+file = os.path.join(helpers.resultsdir, 'meg_hierarchical_' + method + '_permuted2.h5')
 
 # which dot to investigate?
 doti = 5
@@ -59,6 +59,15 @@ subjects = epochs_all.index.levels[0]
 S = subjects.size
 
 times = epochs_all.index.levels[2]
+
+# randomly permute trials, use different permutations for time points, but use
+# the same permutation across all subjects such that only trials are permuted,
+# but random associations between subjects are maintained
+perm = np.arange(epochs_all.shape[0]).reshape([x.size for x in epochs_all.index.levels])
+for t in range(times.size):
+    # shuffles axis=0 inplace
+    np.random.shuffle(perm[:, :, t].T)
+epochs_all.loc[:] = epochs_all.values[perm.flatten(), :]
 
 
 #%% load trial-level design matrices for all subjects (ith-dot based)
