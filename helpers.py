@@ -215,10 +215,14 @@ def load_all_responses(behavdatadir=behavdatadir, cond=cond,
     
 
 def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag', 
-                    megdatadir=megdatadir):
+                    bl=None, megdatadir=megdatadir):
     
-    fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s.h5' % (hfreq,
-            sfreq, window[0], window[1], chtype)
+    if bl is None:
+        blstr = ''
+    else:
+        blstr = '_bl%.2f-%.2f' % bl
+    fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s%s.h5' % (hfreq,
+            sfreq, window[0], window[1], chtype, blstr)
     file = os.path.join(megdatadir, fname)
     
     if os.path.isfile(file):
@@ -281,6 +285,10 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
             # pick specific channels
             epochs = epochs.pick_types(meg=chtype)
             
+            # correct for baseline
+            if bl is not None:
+                epochs = epochs.apply_baseline(bl)
+            
             # resample
             epochs = epochs.resample(sfreq)
             
@@ -306,7 +314,7 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
             
             epochs_all.to_hdf(file, 'epochs_all', mode='w', complevel=7, complib='zlib')
     
-    return fname
+    return epochs_all
 
 
 def load_evoked_container(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag', 
@@ -372,7 +380,8 @@ def load_evoked_container(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
         epochs = epochs.crop(*window)
         
         # smooth
-        epochs.savgol_filter(hfreq)
+        if hfreq < sfreq:
+            epochs.savgol_filter(hfreq)
         
         evoked = epochs.average()
         
