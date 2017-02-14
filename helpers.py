@@ -288,7 +288,8 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
             epochs = epochs.crop(*window)
             
             # smooth
-            epochs.savgol_filter(hfreq)
+            if hfreq < sfreq:
+                epochs.savgol_filter(hfreq)
             
             # get in data frame with my index
             df = epochs.to_data_frame()
