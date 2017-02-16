@@ -21,17 +21,17 @@ import statsmodels.api as sm
 method = 'ss'
 
 # where to store
-file = os.path.join(helpers.resultsdir, 'meg_hierarchical_' + method + '_nosmooth.h5')
+file = os.path.join(helpers.resultsdir, 'meg_hierarchical_' + method + '_bl_long_1to5_permuted2.h5')
 
 # which dot to investigate?
-doti = 5
+dots = np.arange(1, 6)
 
 # implements the assumption that in a trial with RT<(dot onset time + rt_thresh)
 # there cannot be an effect of the corresponding dot in the MEG signal
 rt_thresh = 0.1
 
 # names of regressors that should enter the GLM
-r_names = ['dot_y', 'surprise', 'logpost_left', 'entropy', 'trial_time', 
+r_names = ['dot_y', 'surprise', 'dot_x', 'entropy', 'trial_time', 
            'intercept']
 
 # number of ADVI iterations
@@ -44,7 +44,7 @@ prior = pd.Series({'beta2_sd': 100,
 
 # create HDF5-file and save chosen options
 with pd.HDFStore(file, mode='w', complevel=7, complib='zlib') as store:
-    store['doti'] = pd.Series(doti)
+    store['dots'] = pd.Series(dots)
     store['rt_thresh'] = pd.Series(rt_thresh)
     if method in ['advi', 'nuts']:
         store['prior'] = prior
@@ -54,8 +54,8 @@ with pd.HDFStore(file, mode='w', complevel=7, complib='zlib') as store:
 
 #%% load all data
 #window = doti * helpers.dotdt + np.array([-0.1, 0.2])
-window = [0.4, 0.7]
-epochs_all = helpers.load_meg_epochs(hfreq=100, window=window)
+window = [0, 0.9]
+epochs_all = helpers.load_meg_epochs(hfreq=100, window=window, bl=(-0.3, 0))
 subjects = epochs_all.index.levels[0]
 S = subjects.size
 
@@ -64,18 +64,18 @@ times = epochs_all.index.levels[2]
 # randomly permute trials, use different permutations for time points, but use
 # the same permutation across all subjects such that only trials are permuted,
 # but random associations between subjects are maintained
-#perm = np.arange(epochs_all.shape[0]).reshape([x.size for x in epochs_all.index.levels])
-#for t in range(times.size):
-#    # shuffles axis=0 inplace
-#    np.random.shuffle(perm[:, :, t].T)
-#epochs_all.loc[:] = epochs_all.values[perm.flatten(), :]
+perm = np.arange(epochs_all.shape[0]).reshape([x.size for x in epochs_all.index.levels])
+for t in range(times.size):
+    # shuffles axis=0 inplace
+    np.random.shuffle(perm[:, :, t].T)
+epochs_all.loc[:] = epochs_all.values[perm.flatten(), :]
 
 
 #%% load trial-level design matrices for all subjects (ith-dot based)
 if 'RT' in r_names:
-    DM = subject_DM.get_ithdot_DM(doti, r_names)
+    DM = subject_DM.get_trial_DM(dots, r_names=r_names)
 else:
-    DM = subject_DM.get_ithdot_DM(doti, r_names+['RT'])
+    DM = subject_DM.get_trial_DM(dots, r_names=r_names+['RT'])
     
 DM = DM.loc(axis=0)[subjects, :]
 
@@ -84,12 +84,13 @@ DM = DM.loc(axis=0)[subjects, :]
 DM.sort_index(axis=1, inplace=True)
 
 # remove trials which had too few simulations to estimate surprise
-good_trials = np.logical_not(np.isnan(DM['surprise'])).values
+snames = ['surprise_%d' % d for d in dots]
+good_trials = np.logical_not(np.any(np.isnan(DM[snames]), axis=1))
                          
 # remove trials which had RTs below a threshold (and therefore most likely 
-# cannot have an effect of the shown dot)
+# cannot have an effect of the last considered dot)
 good_trials = np.logical_and(good_trials, 
-                             DM['RT'] >= helpers.dotdt*(doti-1) + rt_thresh)
+                             DM['RT'] >= helpers.dotdt*(dots.max()-1) + rt_thresh)
 # remove RT from design matrix
 if 'RT' not in r_names:
     del DM['RT']
