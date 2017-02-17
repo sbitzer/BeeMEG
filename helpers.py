@@ -7,6 +7,7 @@ Created on Tue Dec  6 14:13:55 2016
 """
 
 import os
+import glob
 from scipy.io import loadmat
 import numpy as np
 import pandas as pd
@@ -214,8 +215,108 @@ def load_all_responses(behavdatadir=behavdatadir, cond=cond,
     return allresp
     
 
+def load_meg_epochs_from_sdat(subject, megdatadir=megdatadir):
+    """load Hame's epoched data for one subject, put it into MNE epoch container."""
+    
+    # conveniently, the order of the channels in the matlab data is the same as
+    # the order given by the raw fif-file (see channel_names.mat which I extracted
+    # from variable hdr in one of the files in meg_original_data)
+    mat = loadmat(os.path.join(megdatadir, '%02d_sdat.mat' % subject))
+
+    # construct full data array corresponding to the channels defined in info
+    data = np.zeros((480, 313, 301))
+    
+    # MEG data
+    data[:, :306, :] = mat['smeg']
+    
+    # EOG + ECG
+    data[:, 306:309, :] = mat['setc'][:, :3, :]
+    
+    # triggers (STI101) - Hame must have added this manually as I can't see where
+    # it was added in her Matlab scripts, but the time-courses and values 
+    # definitely suggest that it's STI101
+    # NOT PRESENT FOR ALL SUBJECTS
+    if mat['setc'].shape[1] == 4:
+        data[:, 310, :] = mat['setc'][:, 3, :]
+    
+    tmin = -0.3
+    dt = 0.004
+    
+    # load info from raw file
+    try:
+        # raw file of subject, block 1
+        rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm%02da/bm%02da1.fif' % (subject, subject)
+        
+        # get MEG-info from raw file (for channel layout and names)
+        info = mne.io.read_info(rawfile)
+    except FileNotFoundError:
+        # just use info of subject 2 - shouldn't matter unless you use
+        # projections
+        rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm02a/bm02a1.fif'
+        
+        # get MEG-info from raw file (for channel layout and names)
+        info = mne.io.read_info(rawfile)
+        
+    # set sampling frequency to that of Hame's epochs
+    info['sfreq'] = 1 / dt
+        
+    # create events array
+    events = np.c_[np.arange(480), np.full(480, 301, dtype=int), 
+                   np.zeros(480, dtype=int)]
+    
+    # type of event
+    event_id = {'dot_1_onset': 0}
+    
+    # create MNE epochs container
+    epochs = mne.EpochsArray(data, info, events, tmin, event_id, proj=False)
+    
+    return epochs
+
+
+def find_precomputed_epochs(hfreq, sfreq, window, chtype, bl, 
+                            megdatadir=megdatadir):
+    
+    if bl is None:
+        blstr = ''
+    else:
+        blstr = '_bl%.2f-%.2f' % bl
+        
+    # if there is a file with the exact name, return data from that
+    fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s%s.h5' % (hfreq,
+            sfreq, window[0], window[1], chtype, blstr)
+    file = os.path.join(megdatadir, fname)
+    if os.path.isfile(file):
+        return pd.read_hdf(file)
+    
+    # otherwise check whether there are files for which only the time window
+    # differs
+    fname_mask = 'epochs_hfreq%.1f_sfreq%.1f_window*_%s%s.h5' % (hfreq,
+            sfreq, chtype, blstr)
+    files = glob.glob(os.path.join(megdatadir, fname_mask))
+    
+    # return data from the first file which includes all requested data
+    for file in files:
+        filewin = re.match(r'.*window(-?\d\.\d\d)-(-?\d\.\d\d)', file).groups()
+        filewin = [float(filewin[0]), float(filewin[1])]
+        
+        if filewin[0] <= window[0] and filewin[1] >= window[1]:
+            epochs = pd.read_hdf(file)
+            
+            filetimes = epochs.index.get_level_values('time')
+            window = np.array(window) * 1000
+            
+            if window[0] == window[1]:
+                time = filetimes[np.argmin(np.abs(filetimes - window[0]).values)]
+                return epochs.xs(time, level='time', drop_level=False)
+            else:
+                return epochs[np.logical_and(filetimes >= window[0], 
+                                             filetimes <= window[1])]
+            
+    return None
+
+            
 def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag', 
-                    bl=None, megdatadir=megdatadir):
+                    bl=None, megdatadir=megdatadir, save_evoked=False):
     
     if bl is None:
         blstr = ''
@@ -225,20 +326,10 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
             sfreq, window[0], window[1], chtype, blstr)
     file = os.path.join(megdatadir, fname)
     
-    if os.path.isfile(file):
-        return pd.read_hdf(file)
-    else:
+    epochs_all = find_precomputed_epochs(hfreq, sfreq, window, chtype, bl, 
+                                         megdatadir)
+    if epochs_all is None:
         subjects = find_available_subjects(megdatadir=megdatadir)
-        
-        # create events array
-        events = np.c_[np.arange(480), np.full(480, 301, dtype=int), 
-                       np.zeros(480, dtype=int)]
-        
-        # type of event
-        event_id = {'dot_onset': 0}
-        
-        # when does an epoch start? - 0.3 s before onset of the first dot
-        tmin = -0.3
         
         # channel connectivity from FieldTrip for cluster analysis
         connectivity, co_channels = mne.channels.read_ch_connectivity(
@@ -247,40 +338,8 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
         fresh = True
         for sub in subjects:
             print('loading subject %2d' % sub)
-            try:
-                # raw file of subject, block 1
-                rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm%02da/bm%02da1.fif' % (sub, sub)
-                
-                # get MEG-info from raw file (for channel layout and names)
-                info = mne.io.read_info(rawfile)
-            except FileNotFoundError:
-                # just use last working info - for now it shouldn't matter
-                pass
-        
-            # Hame has downsampled to 4ms per sample
-            info['sfreq'] = 1 / 0.004
-        
-            # load Hame's epoched data
-            # conveniently, the order of the channels in the matlab data is the same as
-            # the order given by the raw fif-file (see channel_names.mat which I extracted
-            # from variable hdr in one of the files in meg_original_data)
-            mat = loadmat('data/meg_final_data/%02d_sdat.mat' % sub)
-        
-            # construct full data array corresponding to the channels defined in info
-            data = np.zeros((480, 313, 301))
-            # MEG data
-            data[:, :306, :] = mat['smeg']
-            # EOG + ECG
-            data[:, 306:309, :] = mat['setc'][:, :3, :]
-            # triggers (STI101) - Hame must have added this manually as I can't see where
-            # it was added in her Matlab scripts, but the time-courses and values 
-            # definitely suggest that it's STI101
-            # NOT PRESENT FOR ALL SUBJECTS
-            if mat['setc'].shape[1] == 4:
-                data[:, 310, :] = mat['setc'][:, 3, :]
-        
-            # create MNE epochs
-            epochs = mne.EpochsArray(data, info, events, tmin, event_id, proj=False)
+            # load MNE epochs
+            epochs = load_meg_epochs_from_sdat(sub, megdatadir)
             
             # pick specific channels
             epochs = epochs.pick_types(meg=chtype)
@@ -290,9 +349,10 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
                 epochs = epochs.apply_baseline(bl)
             
             # resample
-            epochs = epochs.resample(sfreq)
+            if sfreq != epochs.info['sfreq']:
+                epochs = epochs.resample(sfreq)
             
-            # select time points for 5th dot
+            # select time points
             epochs = epochs.crop(*window)
             
             # smooth
@@ -305,6 +365,12 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
                     df.index.levels[2]], names=['subject', 'trial', 'time'])
             
             if fresh:
+                if save_evoked:
+                    evoked = epochs.average()
+                    evoked.save(os.path.join(megdatadir, 'evoked_'
+                            'sfreq%.1f_window%.2f-%.2f_%s-ave.fif' % (
+                            sfreq, window[0], window[1], chtype)))
+                
                 epochs_all = df
                 fresh = False
             else:
@@ -317,10 +383,10 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
     return epochs_all
 
 
-def load_evoked_container(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag', 
+def load_evoked_container(sfreq=100, window=[0.4, 0.7], chtype='mag', 
                           megdatadir=megdatadir):
     
-    fname = 'evoked_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s-ave.fif' % (hfreq,
+    fname = 'evoked_sfreq%.1f_window%.2f-%.2f_%s-ave.fif' % (
             sfreq, window[0], window[1], chtype)
     file = os.path.join(megdatadir, fname)
     
@@ -329,47 +395,9 @@ def load_evoked_container(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
     else:
         sub = 2
         
-        # create events array
-        events = np.c_[np.arange(480), np.full(480, 301, dtype=int), 
-                       np.zeros(480, dtype=int)]
-        
-        # type of event
-        event_id = {'dot_onset': 0}
-        
-        # when does an epoch start? - 0.3 s before onset of the first dot
-        tmin = -0.3
-        
-        # raw file of subject, block 1
-        rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm%02da/bm%02da1.fif' % (sub, sub)
-        
-        # get MEG-info from raw file (for channel layout and names)
-        info = mne.io.read_info(rawfile)
-        
-        # Hame has downsampled to 4ms per sample
-        info['sfreq'] = 1 / 0.004
-        
         # load Hame's epoched data
-        # conveniently, the order of the channels in the matlab data is the same as
-        # the order given by the raw fif-file (see channel_names.mat which I extracted
-        # from variable hdr in one of the files in meg_original_data)
-        mat = loadmat('data/meg_final_data/%02d_sdat.mat' % sub)
-        
-        # construct full data array corresponding to the channels defined in info
-        data = np.zeros((480, 313, 301))
-        # MEG data
-        data[:, :306, :] = mat['smeg']
-        # EOG + ECG
-        data[:, 306:309, :] = mat['setc'][:, :3, :]
-        # triggers (STI101) - Hame must have added this manually as I can't see where
-        # it was added in her Matlab scripts, but the time-courses and values 
-        # definitely suggest that it's STI101
-        # NOT PRESENT FOR ALL SUBJECTS
-        if mat['setc'].shape[1] == 4:
-            data[:, 310, :] = mat['setc'][:, 3, :]
-        
-        # create MNE epochs
-        epochs = mne.EpochsArray(data, info, events, tmin, event_id, proj=False)
-        
+        epochs = load_meg_epochs_from_sdat(sub, megdatadir)
+            
         # pick specific channels
         epochs = epochs.pick_types(meg=chtype)
         
@@ -378,10 +406,6 @@ def load_evoked_container(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
         
         # select time points for 5th dot
         epochs = epochs.crop(*window)
-        
-        # smooth
-        if hfreq < sfreq:
-            epochs.savgol_filter(hfreq)
         
         evoked = epochs.average()
         
