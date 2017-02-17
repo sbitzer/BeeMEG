@@ -294,8 +294,12 @@ def find_precomputed_epochs(hfreq, sfreq, window, chtype, bl,
             sfreq, chtype, blstr)
     files = glob.glob(os.path.join(megdatadir, fname_mask))
     
+    # sort files according to their size (smallest first)
+    files = pd.DataFrame(files, index=[os.path.getsize(file) for file in files])
+    files.sort_index(inplace=True)
+    
     # return data from the first file which includes all requested data
-    for file in files:
+    for file in files.values[:, 0]:
         filewin = re.match(r'.*window(-?\d\.\d\d)-(-?\d\.\d\d)', file).groups()
         filewin = [float(filewin[0]), float(filewin[1])]
         
