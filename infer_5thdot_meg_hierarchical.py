@@ -21,7 +21,7 @@ import statsmodels.api as sm
 method = 'ss'
 
 # where to store
-file = os.path.join(helpers.resultsdir, 'meg_hierarchical_' + method + '_bl_long_1to5_permuted2.h5')
+file = os.path.join(helpers.resultsdir, 'meg_hierarchical_' + method + '_bl_long_1to5_abs_permuted2.h5')
 
 # which dot to investigate?
 dots = np.arange(1, 6)
@@ -31,7 +31,7 @@ dots = np.arange(1, 6)
 rt_thresh = 0.1
 
 # names of regressors that should enter the GLM
-r_names = ['dot_y', 'surprise', 'dot_x', 'entropy', 'trial_time', 
+r_names = ['abs_dot_y', 'abs_dot_x', 'dot_y', 'dot_x', 'entropy', 'trial_time', 
            'intercept']
 
 # number of ADVI iterations
@@ -84,8 +84,11 @@ DM = DM.loc(axis=0)[subjects, :]
 DM.sort_index(axis=1, inplace=True)
 
 # remove trials which had too few simulations to estimate surprise
-snames = ['surprise_%d' % d for d in dots]
-good_trials = np.logical_not(np.any(np.isnan(DM[snames]), axis=1))
+if 'surprise_%d' % dots[0] in DM.columns:
+    snames = ['surprise_%d' % d for d in dots]
+    good_trials = np.logical_not(np.any(np.isnan(DM[snames]), axis=1))
+else:
+    good_trials = np.full_like(DM['intercept'], True, dtype=bool)
                          
 # remove trials which had RTs below a threshold (and therefore most likely 
 # cannot have an effect of the last considered dot)
