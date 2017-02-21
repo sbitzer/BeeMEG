@@ -103,9 +103,9 @@ trial_dot['momentary_surprise_x'] = ( -np.log(0.5) -
 # components is s / np.sqrt(sur.shape[0])
 sur = trial_dot[['momentary_surprise', 'momentary_surprise_x', 'momentary_surprise_y']]
 sur = sur - sur.mean()
-U, s, Vt = np.linalg.svd(sur, full_matrices=False)
-trial_dot['momentary_surprise_pc1'] = U[:, 0] * s[0]
-trial_dot['momentary_surprise_pc2'] = U[:, 1] * s[1]
+U, s_ms, Vt_ms = np.linalg.svd(sur, full_matrices=False)
+trial_dot['momentary_surprise_pc1'] = U[:, 0] * s_ms[0]
+trial_dot['momentary_surprise_pc2'] = U[:, 1] * s_ms[1]
 
 del U, sur, gll
 
@@ -159,3 +159,45 @@ subject_trial['entropy'] = posterior_model_measures.get_entropies().flatten(orde
 #%% subject x trial x dots
 
 subject_trial_dot = posterior_model_measures.get_dot_level_measures()
+
+# log-posterior ratio (corresponding to accumulated evidence in DDM)
+subject_trial_dot['lpr'] = ( subject_trial_dot.logpost_left - 
+                             subject_trial_dot.logpost_right )
+
+# do PCA to find a regressor that is not strongly correlated with dot_x, but 
+# still contains information about accumulated evidence
+df = pd.DataFrame(subject_trial_dot['lpr'])
+for sub in df.index.levels[0]:
+    # use negative dot_x, because lpr is positive when left is probable
+    # then lpr and negative dot_x will be correlated
+    df.loc[sub, 'neg_dot_x'] = -trial_dot['dot_x'].values
+
+# only select the first 5 dots for the PCA, because they are most interesting
+# for the analysis; not doing this will mean that the accumulated evidence 
+# regressor will get too much weight (s[1] will be higher), because the 
+# accumulated evidence influences lpr stronger for the late dots while the 
+# first couple of dots are more dominated by the momentary evidence of dot_x,
+# this will make the two principal component regressors uncorrelated across all
+# dots but strongly correlated for the first 5 dots which also leads to a 
+# strong anti-correlation between dot_x and the accumulated evidence regressor
+df = df.loc[(slice(None), slice(None), slice(1, 5)), :]
+
+# need to drop all nans for SVD
+df = df.dropna()
+
+# bring dot_x and lpr into comparable (normalised) spaces
+df = (df - df.mean()) / df.std()
+
+# perform SVD
+# Vt.T was for me a rotation matrix implementing a counterclockwise rotation by 
+# exactly 3/4 pi independent of whether all or only the first 5 dots are used
+U, s_lpr, Vt_lpr = np.linalg.svd(df.values, full_matrices=False)
+
+# save principal component scores
+df['lpr_ndotx_pc1'] = U[:, 0] * s_lpr[0]
+df['lpr_ndotx_pc2'] = U[:, 1] * s_lpr[1]
+
+subject_trial_dot = pd.concat([subject_trial_dot, 
+                               df[['lpr_ndotx_pc1', 'lpr_ndotx_pc2']]], axsi=1)
+
+del df, U
