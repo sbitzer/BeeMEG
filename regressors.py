@@ -166,7 +166,6 @@ subject_trial_dot['lpr'] = ( subject_trial_dot.logpost_left -
 
 # do PCA to find a regressor that is not strongly correlated with dot_x, but 
 # still contains information about accumulated evidence
-
 def pca(sub):
     df = pd.DataFrame(subject_trial_dot.loc[sub, 'lpr'])
     
@@ -201,3 +200,33 @@ def pca(sub):
 subject_trial_dot = pd.concat([subject_trial_dot, 
         pd.concat([pca(sub) for sub in subjecti], keys=subjecti)], axis=1)
 
+# same approach for 'accumulated surprise' - the surprise that can be 
+# attributed to a deviation from the acquired belief about the true target from
+# the previous dots
+def pca(sub):
+    df = pd.DataFrame(subject_trial_dot.loc[sub, 'surprise'])
+    
+    df['momentary_surprise'] = trial_dot['momentary_surprise'].values
+    
+    # only select the first 5 dots for the PCA
+    df = df.loc[(slice(None), slice(1, 5)), :]
+
+    # need to drop all nans for SVD
+    df = df.dropna()
+    
+    # remove means for PCA to work (dividing or not dividing by std only 
+    # changes the scaling of the resulting regressor slightly)
+    df = (df - df.mean()) / df.std()
+    
+    # perform SVD (Vt.T will be a rotation matrix implementing a 
+    # counterclockwise rotation by exactly 3/4 pi, because the columns of Vt.T
+    # have to be orthonormal)
+    U, s, Vt = np.linalg.svd(df, full_matrices=False)
+    
+    return pd.Series(U[:, 1] * s[1], index=df.index, name='accsur_pca')
+
+# pd.concat will do the heavy lifting of integrating the indices
+subject_trial_dot = pd.concat([subject_trial_dot, 
+        pd.concat([pca(sub) for sub in subjecti], keys=subjecti)], axis=1)
+    
+del pca
