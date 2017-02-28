@@ -164,6 +164,13 @@ subject_trial_dot = posterior_model_measures.get_dot_level_measures()
 subject_trial_dot['lpr'] = ( subject_trial_dot.logpost_left - 
                              subject_trial_dot.logpost_right )
 
+# accumulated evidence is the log posterior ratio from the previous dot
+for sub in subjecti:
+    subject_trial_dot.loc[(sub, slice(None), 1), 'accev'] = (
+            np.log(subject.prior[sub]) - np.log(1 - subject.prior[sub]) )
+subject_trial_dot.loc[(slice(None), slice(None), slice(2, None)), 'accev'] = \
+        subject_trial_dot.loc[(slice(None), slice(None), slice(1, 24)), 'lpr'].values
+
 # do PCA to find a regressor that is not strongly correlated with dot_x, but 
 # still contains information about accumulated evidence
 def pca(sub):
