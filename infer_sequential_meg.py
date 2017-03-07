@@ -145,7 +145,9 @@ if trialregs_dot:
 
 # this will include bad trials, too, but it shouldn't matter as this 
 # normalisation across subjects, trials and time points is anyway very rough
-epochs_all = (epochs_all - epochs_all.mean()) / epochs_all.std()
+# do this in two steps to save some memory
+epochs_all = epochs_all - epochs_all.mean()
+epochs_all = epochs_all / epochs_all.std()
 
 
 #%% prepare output and helpers
