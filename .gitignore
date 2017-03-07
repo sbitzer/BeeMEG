@@ -1,5 +1,6 @@
 .spyproject
 .spyderproject
 data
+mne_subjects
 __pycache__
 .ipynb_checkpoints
