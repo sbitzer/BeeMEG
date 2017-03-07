@@ -46,6 +46,8 @@ raw data files:
 proni/BeeMEG/MEG/Raw
 bm[sub]a[i].fif - raw data; sub is subject number and i is block number within experiment
 bm[sub]a[i]_mc.fif - raw data after Maxfilter (signal space separation algorithm)
+bm[sub]ab.fif - raw data for empty room (before session?)
+bm[sub]ad.fif - raw data for empty room (after session?)
 
 """
 
