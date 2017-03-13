@@ -13,6 +13,16 @@ subjects_dir = 'mne_subjects'
 subject = 'fsaverage'
 bem_dir = os.path.join(subjects_dir, subject, 'bem')
 
+# MNE uses the info only to get channel names, exclude bad channels, account 
+# for 'comps', whatever these are, and include projections in the inverse 
+# operator. Although the transformation of device to head coordinates of the 
+# subject (dev_head_t) is stored in the info of the forward solution, it is not
+# used during the computation of the forward solution - the trans-file is used
+# for that. For the average subject I can, therefore, just read any info 
+# containing the relevant channel information as long as it doesn't contain any
+# projections - the infos of the motion corrected files fulfill that.
+info = mne.io.read_info('/home/bitzer/proni/BeeMEG/MEG/Raw/bm02a/bm02a1_mc.fif')
+
 fwdfile = os.path.join(bem_dir, 'fsaverage-oct-6-fwd.fif')
 if os.path.isfile(fwdfile):
     fwd = mne.read_forward_solution(fwdfile)
@@ -35,8 +45,6 @@ else:
         bem = mne.make_bem_solution(model)
         mne.write_bem_solution(os.path.join(bem_dir, 
                 'fsaverage-inner_skull-bem-sol.fif'), bem)
-    
-    info = mne.io.read_info('/home/bitzer/proni/BeeMEG/MEG/Raw/bm02a/bm02a1.fif')
     
     srcfile = os.path.join(bem_dir, 'fsaverage-oct-6-src.fif')
     if os.path.isfile(srcfile):
