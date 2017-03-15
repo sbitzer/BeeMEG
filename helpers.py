@@ -224,7 +224,7 @@ def load_meg_epochs_from_sdat(subject, megdatadir=megdatadir):
     mat = loadmat(os.path.join(megdatadir, '%02d_sdat.mat' % subject))
 
     # construct full data array corresponding to the channels defined in info
-    data = np.zeros((480, 313, 301))
+    data = np.zeros((480, 322, 301))
     
     # MEG data
     data[:, :306, :] = mat['smeg']
@@ -245,14 +245,14 @@ def load_meg_epochs_from_sdat(subject, megdatadir=megdatadir):
     # load info from raw file
     try:
         # raw file of subject, block 1
-        rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm%02da/bm%02da1.fif' % (subject, subject)
+        rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm%02da/bm%02da1_mc.fif' % (subject, subject)
         
         # get MEG-info from raw file (for channel layout and names)
         info = mne.io.read_info(rawfile)
     except FileNotFoundError:
         # just use info of subject 2 - shouldn't matter unless you use
         # projections
-        rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm02a/bm02a1.fif'
+        rawfile = '/home/bitzer/proni/BeeMEG/MEG/Raw/bm02a/bm02a1_mc.fif'
         
         # get MEG-info from raw file (for channel layout and names)
         info = mne.io.read_info(rawfile)
