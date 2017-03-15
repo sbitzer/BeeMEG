@@ -115,7 +115,11 @@ del DM
 # this will include bad trials, too, but it shouldn't matter as this 
 # normalisation across subjects, trials and time points is anyway very rough
 # do this in two steps to save some memory
+with pd.HDFStore(file, mode='r+', complevel=7, complib='zlib') as store:
+    store['epochs_mean'] = epochs_all.mean()
 epochs_all = epochs_all - epochs_all.mean()
+with pd.HDFStore(file, mode='r+', complevel=7, complib='zlib') as store:
+    store['epochs_std'] = epochs_all.std()
 epochs_all = epochs_all / epochs_all.std()
 
 
