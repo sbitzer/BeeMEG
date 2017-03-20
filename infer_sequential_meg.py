@@ -37,10 +37,10 @@ R = len(r_names)
 # 5th dot
 # if trialregs_dot = 0, all the data from the dot sequence is used and you 
 # essentially look for the average effect across the considered dot sequence
-trialregs_dot = dots[-1]
+trialregs_dot = 0
 
 # baseline period (set to None for no baseline correction)
-bl = (-0.3, 0)
+bl = None
 
 # desired sampling frequency of data
 sfreq = 100
@@ -242,10 +242,18 @@ for perm in np.arange(nperm+1):
             second_level.loc[(perm, channel, t0), ('mlog10p', slice(None))] = (
                     -np.log10(pvals))
             
-        try:
-            with pd.HDFStore(file, mode='r+', complevel=7, complib='zlib') as store:
-                store['second_level'] = second_level
-                store['first_level'] = first_level
-                store['first_level_diagnostics'] = first_level_diagnostics
-        except:
-            pass
+    try:
+        with pd.HDFStore(file+'.tmp', mode='w') as store:
+            store['second_level'] = second_level
+            store['first_level'] = first_level
+            store['first_level_diagnostics'] = first_level_diagnostics
+    except:
+        pass
+        
+if os.path.isfile(file+'.tmp'):
+    os.remove(file+'.tmp')
+
+with pd.HDFStore(file, mode='r+', complevel=7, complib='zlib') as store:
+    store['second_level'] = second_level
+    store['first_level'] = first_level
+    store['first_level_diagnostics'] = first_level_diagnostics
