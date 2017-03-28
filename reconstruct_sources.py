@@ -14,8 +14,12 @@ import numpy as np
 
 
 #%% options
-inffile_base = 'meg_sequential_201703011624'
+# baseline [-0.3, 0], trialregs_dot=5
+inffile_base = 'meg_sequential_201703011927'
+# no baseline, trialregs_dot=5
+#inffile_base = 'meg_sequential_201703161307'
 inffile = os.path.join(helpers.resultsdir, inffile_base+'.h5')
+
 subjects_dir = 'mne_subjects'
 subject = 'fsaverage'
 bem_dir = os.path.join(subjects_dir, subject, 'bem')
@@ -34,7 +38,7 @@ info = mne.io.read_info('/home/bitzer/proni/BeeMEG/MEG/Raw/bm02a/bm02a1_mc.fif')
 
 fwdfile = os.path.join(bem_dir, 'fsaverage-oct-6-fwd.fif')
 if os.path.isfile(fwdfile):
-    fwd = mne.read_forward_solution(fwdfile)
+    fwd = mne.read_forward_solution(fwdfile, surf_ori=True)
 else:
     transfile = os.path.join(bem_dir, 'fsaverage-trans.fif')
     if not os.path.isfile(transfile):
@@ -90,7 +94,7 @@ ad_hoc_cov = mne.make_ad_hoc_cov(info)
 
 # get data container
 evoked = helpers.load_evoked_container(
-        window=second_level.index.levels[1][[0, -1]] / 1000)
+        window=second_level.index.levels[2][[0, -1]] / 1000)
 # keep MNE from scaling covariances as I do everything manually below
 evoked.nave = 1
 
@@ -115,14 +119,12 @@ for r_name in second_level.columns.levels[1]:
     assert mag_chans[0] == mne.pick_channels(info['ch_names'], 
                                              [second_level.index.levels[1][0]])
     # rescale noise covariance into original physical units
-    cov[np.ix_(mag_chans, mag_chans)] = (  data_noise.cov().values 
-                                         * stds.values**2
-                                         / scaling**2)
+    cov[np.ix_(mag_chans, mag_chans)] = (data_noise * stds.values / scaling).cov()
     noise_cov.update(data=cov, diag=False)
     
     # make inverse operator
     inverse_operator = mne.minimum_norm.make_inverse_operator(
-            info, fwd, noise_cov, loose=0.2, depth=0.8)
+            info, fwd, noise_cov, fixed=True, depth=0.8)
     
     # select data
     data = second_level.loc[(0, slice(None), slice(None)), ('mean', r_name)]
