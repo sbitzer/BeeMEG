@@ -2,5 +2,7 @@
 .spyderproject
 data
 mne_subjects
+figures
 __pycache__
 .ipynb_checkpoints
+*.pyc
