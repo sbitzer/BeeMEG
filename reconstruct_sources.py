@@ -11,6 +11,8 @@ import mne
 import helpers
 import pandas as pd
 import numpy as np
+from warnings import warn
+import scipy.stats
 
 
 #%% options
@@ -20,65 +22,43 @@ inffile_base = 'meg_sequential_201703011927'
 #inffile_base = 'meg_sequential_201703161307'
 inffile = os.path.join(helpers.resultsdir, inffile_base+'.h5')
 
-subjects_dir = 'mne_subjects'
-subject = 'fsaverage'
-bem_dir = os.path.join(subjects_dir, subject, 'bem')
+# statistical measure of first level to be used for source reconstruction
+fl_measure = 'beta'
 
+# source reconstruction method
+method = 'dSPM'
 
-#%% make forward model
-# MNE uses the info only to get channel names, exclude bad channels, account 
-# for 'comps', whatever these are, and include projections in the inverse 
-# operator. Although the transformation of device to head coordinates of the 
-# subject (dev_head_t) is stored in the info of the forward solution, it is not
-# used during the computation of the forward solution - the trans-file is used
-# for that. For the average subject I can, therefore, just read any info 
-# containing the relevant channel information as long as it doesn't contain any
-# projections - the infos of the motion corrected files fulfill that.
-info = mne.io.read_info('/home/bitzer/proni/BeeMEG/MEG/Raw/bm02a/bm02a1_mc.fif')
+fwd_surf_ori = True
 
-fwdfile = os.path.join(bem_dir, 'fsaverage-oct-6-fwd.fif')
-if os.path.isfile(fwdfile):
-    fwd = mne.read_forward_solution(fwdfile, surf_ori=True)
+# fixed orientation?
+fixed_ori = True
+
+if fixed_ori:
+    inv_fixed = True
+    inv_loose = None
 else:
-    transfile = os.path.join(bem_dir, 'fsaverage-trans.fif')
-    if not os.path.isfile(transfile):
-        # note that I had to change the path to fsaverage in this function, 
-        # because it apparently used an old directory structure
-        mne.create_default_subject(mne_root='/home/bitzer/mne-python', 
-                                   fs_home='/media/bitzer/Data/freesurfer', 
-                                   update=True, subjects_dir=subjects_dir)
-        
-    bemfile = os.path.join(bem_dir, 'fsaverage-inner_skull-bem-sol.fif')
-    if os.path.isfile(bemfile):
-        bem = mne.read_bem_solution(bemfile)
-    else:
-        model = mne.read_bem_surfaces(os.path.join(bem_dir, 
-                'fsaverage-inner_skull-bem.fif'))
+    inv_fixed = False
+    inv_loose = 0.2
     
-        bem = mne.make_bem_solution(model)
-        mne.write_bem_solution(os.path.join(bem_dir, 
-                'fsaverage-inner_skull-bem-sol.fif'), bem)
-    
-    srcfile = os.path.join(bem_dir, 'fsaverage-oct-6-src.fif')
-    if os.path.isfile(srcfile):
-        src = mne.read_source_spaces(srcfile)
-    else:
-        src = mne.setup_source_space(subject, spacing='oct6', 
-                                     subjects_dir=subjects_dir, n_jobs=4)
-    
-    fwd = mne.make_forward_solution(info, transfile, src, bem, meg=True, 
-            eeg=False, mindist=5.0, n_jobs=4)
-    
-    mne.write_forward_solution(fwdfile, fwd)
-    
+inv_depth = 0.8
 
-#%% load data
-second_level = pd.read_hdf(inffile, 'second_level')
+options = pd.Series({'fl_measure': fl_measure, 'method': method, 
+                     'fwd_surf_ori': fwd_surf_ori,
+                     'inv_fixed': inv_fixed, 'inv_loose': inv_loose,
+                     'inv_depth': inv_depth, 'inffile_base': inffile_base})
+
+subjects_dir = 'mne_subjects'
+
+file = os.path.join(subjects_dir, 'fsaverage', 'bem', 
+        pd.datetime.now().strftime('source_allsubs_%Y%m%d%H%M.h5'))
+
+
+#%% load data and prepare evoked container
+first_level = pd.read_hdf(inffile, 'first_level')
 
 # load normalisation values to revert scaling 
 means = pd.read_hdf(inffile, 'epochs_mean')
 stds = pd.read_hdf(inffile, 'epochs_std')
-
 # if the standard deviations are orders of magnitudes higher than in the femto
 # range, assume that MNE used standard scaling during epochs.to_data_frame
 if any(stds > 1e-10):
@@ -86,65 +66,226 @@ if any(stds > 1e-10):
 else:
     scaling = 1.0
 
-# restrict forward model to magnetometers
-fwd = mne.pick_types_forward(fwd, meg='mag', eeg=False)
-
-# get covariance container
-ad_hoc_cov = mne.make_ad_hoc_cov(info)
+subjects = first_level.columns.levels[0]
 
 # get data container
 evoked = helpers.load_evoked_container(
-        window=second_level.index.levels[2][[0, -1]] / 1000)
+        window=first_level.index.levels[2][[0, -1]] / 1000)
 # keep MNE from scaling covariances as I do everything manually below
 evoked.nave = 1
 
 
-#%% reconstruct source
-for r_name in second_level.columns.levels[1]:
-    # permutations did not affect intercept, hence I need to estimate noise
-    # somehow differently - simply use a regressor with similarly large effects
-    if r_name == 'intercept':
-        r_name_noise = 'dot_x'
-    else:
-        r_name_noise = r_name
-    data_noise = second_level.loc[(slice(1, None), slice(None), slice(None)), 
-                                  ('mean', r_name_noise)]
-    data_noise = data_noise.reset_index(level='channel').pivot(columns='channel')
-    
-    # make a noise cov by estimating from permutations
-    noise_cov = ad_hoc_cov.copy()
-    cov = np.diag(noise_cov.data)
-    mag_chans = mne.pick_types(info, meg='mag')
-    # ensures that code is only applied to magnetometers
-    assert mag_chans[0] == mne.pick_channels(info['ch_names'], 
-                                             [second_level.index.levels[1][0]])
-    # rescale noise covariance into original physical units
-    cov[np.ix_(mag_chans, mag_chans)] = (data_noise * stds.values / scaling).cov()
-    noise_cov.update(data=cov, diag=False)
-    
-    # make inverse operator
-    inverse_operator = mne.minimum_norm.make_inverse_operator(
-            info, fwd, noise_cov, fixed=True, depth=0.8)
-    
-    # select data
-    data = second_level.loc[(0, slice(None), slice(None)), ('mean', r_name)]
-    data = data.reset_index(level='channel').pivot(columns='channel')
-    
-    # rescale data into original physical units
-    data = data * stds.values / scaling
-    
-    # put data into evoked container
-    evoked.data = data.values.T
-    
-    # lambda2 is related to the precision of the prior over source currents
-    # MNE suggests to set it to 1 / SNR**2
-    lambda2 = 1 / (data.std().mean() / (  data_noise.xs(1, level='permnr')
-                                        * stds.values / scaling).std().mean() )**2
+#%% prepare store for source estimates
+# load fsaverage source space for storing the vertex identities in index
+src = mne.read_source_spaces(os.path.join(subjects_dir, 'fsaverage', 'bem', 
+                                          'fsaverage-oct-6-src.fif'))
 
-    # compute!
-    stc = mne.minimum_norm.apply_inverse(
-            evoked, inverse_operator, lambda2, method='dSPM', pick_ori=None)
+cols = pd.MultiIndex.from_product(
+        [first_level.columns.levels[0], first_level.columns.levels[2]],
+        names=['subject', 'regressor'])
+first_level_src_lh = pd.DataFrame([], dtype=float,
+        index=pd.MultiIndex.from_product(
+                [src[0]['vertno'], first_level.index.levels[2]],
+                names=['vertex', 'time']), 
+        columns=cols)
+first_level_src_rh = pd.DataFrame([], dtype=float,
+        index=pd.MultiIndex.from_product(
+                [src[1]['vertno'], first_level.index.levels[2]],
+                names=['vertex', 'time']), 
+        columns=cols)
+first_level_src = pd.concat([first_level_src_lh, first_level_src_rh],
+                            keys=['lh', 'rh'], names=['hemi', 'vertex', 'time'])
+
+del first_level_src_lh, first_level_src_rh
+
+
+#%% helper function
+def copy_trans_files():
+    """Copies trans-files generated by mne coreg from proni to bem-folders."""
+    from shutil import copy2
+    basedir = '/home/bitzer/proni/BeeMEG/MEG/Raw'
     
-    # save
-    file = os.path.join(bem_dir, inffile_base + '_source_' + r_name)
-    stc.save(file)
+    # find subjects in Raw
+    _, dirnames, _ = next(os.walk(basedir))
+    
+    for dirname in dirnames:
+        if dirname[:2] == 'bm':
+            trans_file = os.path.join(basedir, dirname, dirname[:4]+'-trans.fif')
+            if os.path.isfile(trans_file):
+                copy2(trans_file, os.path.join(subjects_dir, dirname[:4], 'bem'))
+                
+
+#%% loop over subjects
+for sub in subjects:
+    subject = 'bm%02d' % sub
+    bem_dir = os.path.join(subjects_dir, subject, 'bem')
+
+
+    #%% make forward model
+    # MNE uses the info only to get channel names, exclude bad channels, account 
+    # for 'comps', whatever these are, and include projections in the inverse 
+    # operator. Although the transformation of device to head coordinates of the 
+    # subject (dev_head_t) is stored in the info of the forward solution, it is not
+    # used during the computation of the forward solution - the trans-file is used
+    # for that. For the average subject I can, therefore, just read any info 
+    # containing the relevant channel information as long as it doesn't contain any
+    # projections - the infos of the motion corrected files fulfill that.
+    info = mne.io.read_info('/home/bitzer/proni/BeeMEG/MEG/Raw/{0}a/'
+                            '{0}a1_mc.fif'.format(subject))
+    
+    fwdfile = os.path.join(bem_dir, '%s-oct-6-fwd.fif' % subject)
+    if not os.path.isfile(fwdfile):
+        transfile = os.path.join(bem_dir, '%s-trans.fif' % subject)
+        if not os.path.isfile(transfile):
+            warn('Skipping subject {}, because there is no "-trans"-file! '
+                 'Use "mne coreg" to create the file!'.format(sub))
+            continue
+            
+        bemfile = os.path.join(bem_dir, '%s-inner_skull-bem-sol.fif' % subject)
+        if os.path.isfile(bemfile):
+            bem = mne.read_bem_solution(bemfile)
+        else:
+            model = mne.read_bem_surfaces(os.path.join(bem_dir, 
+                    '%s-inner_skull-bem.fif' % subject))
+        
+            bem = mne.make_bem_solution(model)
+            mne.write_bem_solution(bemfile, bem)
+        
+        srcfile = os.path.join(bem_dir, '%s-oct-6-src.fif' % subject)
+        if os.path.isfile(srcfile):
+            src = mne.read_source_spaces(srcfile)
+        else:
+            src = mne.setup_source_space(subject, spacing='oct6', 
+                                         subjects_dir=subjects_dir, n_jobs=4)
+        
+        fwd = mne.make_forward_solution(info, transfile, src, bem, meg=True, 
+                eeg=False, mindist=5.0, n_jobs=4)
+        
+        mne.write_forward_solution(fwdfile, fwd)
+        
+    fwd = mne.read_forward_solution(fwdfile, surf_ori=fwd_surf_ori)
+        
+    
+    #%% prepare
+    # restrict forward model to magnetometers
+    fwd = mne.pick_types_forward(fwd, meg='mag', eeg=False)
+    
+    # get covariance container
+    ad_hoc_cov = mne.make_ad_hoc_cov(info)
+    
+    
+    #%% reconstruct source
+    for r_name in first_level.columns.levels[2]:
+        # permutations did not affect intercept, hence I need to estimate noise
+        # somehow differently - simply use a regressor with similarly large effects
+        if r_name == 'intercept':
+            r_name_noise = 'dot_x'
+        else:
+            r_name_noise = r_name
+        data_noise = first_level.loc[(slice(1, None), slice(None), slice(None)), 
+                                      (sub, fl_measure, r_name_noise)]
+        data_noise = data_noise.reset_index(level='channel').pivot(columns='channel')
+        
+        # make a noise cov by estimating from permutations
+        noise_cov = ad_hoc_cov.copy()
+        cov = np.diag(noise_cov.data)
+        mag_chans = mne.pick_types(info, meg='mag')
+        # ensures that code is only applied to magnetometers
+        assert mag_chans[0] == mne.pick_channels(info['ch_names'], 
+                                                 [first_level.index.levels[1][0]])
+        # rescale noise covariance into original physical units
+        cov[np.ix_(mag_chans, mag_chans)] = (data_noise * stds.values / scaling).cov()
+        noise_cov.update(data=cov, diag=False)
+        
+        # make inverse operator
+        inverse_operator = mne.minimum_norm.make_inverse_operator(
+                info, fwd, noise_cov, loose=inv_loose, fixed=inv_fixed, 
+                depth=inv_depth)
+        
+        # select data
+        data = first_level.loc[(0, slice(None), slice(None)), 
+                               (sub, fl_measure, r_name)]
+        data = data.reset_index(level='channel').pivot(columns='channel')
+        
+        # rescale data into original physical units
+        data = data * stds.values / scaling
+        
+        # put data into evoked container
+        evoked.data = data.values.T
+        
+        # lambda2 is related to the precision of the prior over source currents
+        # MNE suggests to set it to 1 / SNR**2
+        lambda2 = 1 / (data.std().mean() / (  data_noise.xs(1, level='permnr')
+                                            * stds.values / scaling).std().mean() )**2
+    
+        # compute!
+        stc = mne.minimum_norm.apply_inverse(
+                evoked, inverse_operator, lambda2, method=method, pick_ori=None)
+        
+        # save
+        stc_file = os.path.join(bem_dir, '{}_{}_source_{}'.format(subject, inffile_base, r_name))
+        stc.save(stc_file)
+
+        # collect results; the indexing operation below is very costly, but 
+        # necessary when some of the vertices were excluded during the 
+        # generation of the forward model
+        if sum([len(v) for v in stc.vertices]) == 8196:
+            first_level_src.loc[:, (sub, r_name)] = stc.data.flatten()
+        else:
+            n_lh = len(stc.vertices[0])
+            first_level_src.loc[('lh', stc.vertices[0], slice(None)), 
+                                (sub, r_name)] = stc.data[:n_lh, :].flatten()
+            first_level_src.loc[('rh', stc.vertices[1], slice(None)), 
+                                (sub, r_name)] = stc.data[n_lh:, :].flatten()
+        
+    
+#%% aggregate into fsaverage result
+
+# average across subjects
+second_level_src = pd.concat(
+        [first_level_src.mean(axis=1, level='regressor'), 
+         first_level_src.std(axis=1, level='regressor')],
+        axis=1, keys=['mean', 'std'], names=['measure', 'regressor'])
+second_level_src = pd.concat(
+        [second_level_src.xs('mean', axis=1, level='measure'), 
+         second_level_src.xs('std', axis=1, level='measure'), 
+         second_level_src.xs('mean', axis=1, level='measure')
+         / second_level_src.xs('std', axis=1, level='measure')
+         * np.sqrt(len(subjects))], axis=1, 
+        keys=['mean', 'std', 'tval'], names=['measure', 'regressor'])
+
+pvals = scipy.stats.t.sf(second_level_src.xs('tval', axis=1).abs(), 
+                         df=len(subjects)-1)
+_, pvals = -np.log10(mne.stats.fdr_correction(pvals, alpha=0.05))
+
+second_level_src = pd.concat(
+        [second_level_src,
+         pd.DataFrame(pvals, 
+                      index=second_level_src.index,
+                      columns=pd.MultiIndex.from_product(
+                              [['mlog10p_fdr'], 
+                               second_level_src.columns.levels[1]],
+                              names=['measure', 'regressor']))],
+        axis=1)
+
+with pd.HDFStore(file, mode='w', complevel=7, complib='zlib') as store:
+    store['options'] = options
+    store['first_level_src'] = first_level_src
+    store['second_level_src'] = second_level_src
+    
+    
+#%% save into viewable source estimates
+def save_stcs(src_df, measure='tval'):
+    for r_name in src_df.columns.levels[1]:
+        data = src_df.loc(axis=1)[measure, r_name].reset_index(level='time')
+        data = data.pivot(columns='time')
+        stc = mne.SourceEstimate(
+                data.values, 
+                vertices=[data.loc['lh'].index.values, 
+                          data.loc['rh'].index.values],
+                tmin=data.columns.levels[2][0] / 1000.,
+                tstep=np.diff(data.columns.levels[2][:2])[0] / 1000,
+                subject='fsaverage')
+        
+        stc_file = '{}_{}_{}'.format(file[:-3], measure, r_name)
+        stc.save(stc_file)

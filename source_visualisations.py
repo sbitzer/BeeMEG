@@ -36,8 +36,8 @@ view = {'lh': {'azimuth': -55.936889415680255,
 
 def load_source_estimate(r_name='dot_x', f_pattern=''):
     # find files
-    files = glob.glob(os.path.join(  bem_dir, '*' + f_pattern + '*' 
-                                   + '_source_' + r_name + '-lh.stc'))
+    files = glob.glob(os.path.join(  bem_dir, '*' + f_pattern 
+                                   + r_name + '-lh.stc'))
     
     if len(files) > 0:
         print "using file: " + files[0]
