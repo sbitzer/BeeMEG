@@ -240,33 +240,33 @@ for sub in subjects:
         
     
 #%% aggregate into fsaverage result
+flabslog = np.log(first_level_src.abs())
 
 # average across subjects
-second_level_src = pd.concat(
-        [first_level_src.mean(axis=1, level='regressor'), 
-         first_level_src.std(axis=1, level='regressor')],
-        axis=1, keys=['mean', 'std'], names=['measure', 'regressor'])
-second_level_src = pd.concat(
-        [second_level_src.xs('mean', axis=1, level='measure'), 
-         second_level_src.xs('std', axis=1, level='measure'), 
-         second_level_src.xs('mean', axis=1, level='measure')
-         / second_level_src.xs('std', axis=1, level='measure')
-         * np.sqrt(len(subjects))], axis=1, 
-        keys=['mean', 'std', 'tval'], names=['measure', 'regressor'])
+slmean = first_level_src.mean(axis=1, level='regressor')
+slstd = first_level_src.std(axis=1, level='regressor')
+slabsmean = flabslog.mean(axis=1, level='regressor')
+slabsvar = flabslog.var(axis=1, level='regressor')
+del flabslog
 
-pvals = scipy.stats.t.sf(second_level_src.xs('tval', axis=1).abs(), 
-                         df=len(subjects)-1)
+S = len(subjects)
+tval = slmean / slstd * np.sqrt(S)
+pvals = scipy.stats.t.sf(tval.abs(), df=S-1)
 _, pvals = -np.log10(mne.stats.fdr_correction(pvals, alpha=0.05))
+pvals = pd.DataFrame(pvals, index=tval.index, columns=tval.columns)
+
+# mean / std *sqrt(S) of log-normal distribution
+# this is no proper t-value, but at least should give some orientation
+abstval = (  np.exp(slabsmean + slabsvar / 2)
+           / np.sqrt((np.exp(slabsvar) - 1) * np.exp(2*slabsmean + slabsvar))
+           * np.sqrt(S))
 
 second_level_src = pd.concat(
-        [second_level_src,
-         pd.DataFrame(pvals, 
-                      index=second_level_src.index,
-                      columns=pd.MultiIndex.from_product(
-                              [['mlog10p_fdr'], 
-                               second_level_src.columns.levels[1]],
-                              names=['measure', 'regressor']))],
-        axis=1)
+        [slmean, slstd, tval, pvals, slabsmean, slabsvar, abstval], 
+        keys=['mean', 'std', 'tval', 'mlog10p_fdr', 'absmean', 'absvar', 
+              'abstval'], 
+        names=['measure', 'regressor'], axis=1)
+
 
 with pd.HDFStore(file, mode='w', complevel=7, complib='zlib') as store:
     store['options'] = options

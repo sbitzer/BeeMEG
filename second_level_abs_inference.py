@@ -8,92 +8,38 @@ Created on Tue Apr  4 15:54:14 2017
 
 import numpy as np
 import pandas as pd
-import pymc3 as pm
-import theano.tensor as tt
 import pystan
-import helpers
+import os
+import scipy.stats
+
+
+#%% options
+# store of first_level results
+basefile = 'source_allsubs_201703301614.h5'
+directory = 'mne_subjects/fsaverage/bem/'
+
+# regressors for which to infer across-subject strength
+r_names = ['dot_x', 'accev']
+
+# threshold for "posterior probability of the existence of a medium sized 
+# effect", i.e., the probability that a sample from the posterior is > p_thresh
+p_thresh = 0.5
+
+# chunksize: store results every CS iterations
+CS = 5000
 
 
 #%% load data
-file = 'mne_subjects/fsaverage/bem/source_allsubs_201703301614.h5'
-first_level_src = pd.read_hdf(file, 'first_level_src')
+first_level_src = pd.read_hdf(os.path.join(directory, basefile), 
+                              'first_level_src')
 
-#N = first_level_src.shape[0]
-#S = first_level_src.columns.levshape[0]
+N = first_level_src.shape[0]
+S = first_level_src.columns.levshape[0]
 
-data = first_level_src.xs('dot_x', axis=1, level='regressor')
-N, S = data.shape
-
-#%%
-N, S = data.shape
-with pm.Model() as model:
-    pi = pm.Beta('pi', alpha=1, beta=1, shape=N)
-    mu = pm.HalfNormal('mu', sd=100, shape=N)
-    sigma = pm.HalfCauchy('sigma', 5, shape=N)
-    
-    subjects = pm.NormalMixture('subjects', 
-                                w=tt.tile(tt.stack([pi, 1-pi], axis=1), (S, 1)), 
-                                mu=tt.tile(tt.stack([-mu, mu], axis=1), (S, 1)),
-                                sd=tt.tile(tt.stack([sigma, sigma], axis=1), (S, 1)),
-                                observed=data.values.flatten('F'))
-    
-    means, sds, elbos = pm.variational.advi(n=40000)
-    
-#%%
-N, S = data.shape
-with pm.Model() as model:
-    pi = pm.Beta('pi', alpha=1, beta=1)
-    mu = pm.HalfNormal('mu', sd=100)
-    sigma = pm.HalfCauchy('sigma', 5)
-    
-    subjects = pm.NormalMixture('subjects', 
-                                w=tt.stack([pi, 1-pi], axis=1), 
-                                mu=tt.stack([-mu, mu], axis=1),
-                                sd=tt.stack([sigma, sigma], axis=1),
-                                observed=data.values[0, :])
-    
-    means, sds, elbos = pm.variational.advi(n=40000)
-    
-    
-#%% random data in Stan
-data = np.random.randn(1000, 34)
-N, S = data.shape
-
-folded_normal_stan = """
-data {
- int<lower = 0> N;
- int<lower = 0> S;
- 
- // choose matrix over array, because more efficient; matrices are
- // column-major so rows should be in the inner loop for maximum efficiency
- matrix[S, N] y;
-}
-
-parameters {
-  real<lower=0> mu[N];
-  real<lower=0> sigma[N];
-  real<lower=0, upper=1> theta[N];
-}
-
-model {
- sigma ~ normal(0, 5);
- mu ~ normal(0, 5);
- theta ~ beta(5, 5);
- 
- for (n in 1:N)
-   for (s in 1:S)
-     target += log_mix(theta[n],
-                       normal_lpdf(y[s, n] |  mu[n], sigma[n]),
-                       normal_lpdf(y[s, n] | -mu[n], sigma[n]));
-}
-"""
-
-fit = pystan.stan(model_code=folded_normal_stan, 
-                  data={'N': N, 'S': S, 'y': data.T},
-                  iter=1000, chains=4)
+chunks = [slice(c*CS, min((c+1)*CS, N)) for c in range(int(np.ceil(N/CS)))]
 
 
-#%% random data
+#%% create Stan model
 folded_normal_stan = """
 data {
  int<lower = 0> S;
@@ -120,17 +66,72 @@ model {
 
 # pre-compile using random data
 fit = pystan.stan(model_code=folded_normal_stan, 
-                  data={'N': N, 'S': S, 'y': np.random.randn(S)},
+                  data={'S': S, 'y': np.random.randn(S)},
                   iter=1000, chains=4)
 
-r_name = 'dot_x'
-fits = []
-start = pd.datetime.now()
-for ind in range(10):
-    data = first_level_src.iloc[ind].xs(r_name, level='regressor').dropna()
-    S = data.size
+
+#%% run inference across all data
+sl_cols = pd.Index(['mu_mean', 'mu_std', 'mu_t', 'mu_p_large', 
+                    'sigma_mean', 'sigma_std', 'theta_mean', 'theta_std', 
+                    'lp_mean', 'lp_std', 'overlap', 'consistency'], 
+                   name='measure')
+
+for r_name in r_names:
+    print('%s\n%s' % (r_name, '-'*len(r_name)))
+    file = os.path.join(directory, '{}_slabs_{}.h5'.format(basefile[:-3], r_name))
     
-    fits.append(pystan.stan(fit=fit, data={'N': N, 'S': S, 'y': data},
-                            iter=1000, chains=4))
-end = pd.datetime.now()
-print('elpased time for %d passes: %.2f s' % (ind+1, (end-start).total_seconds()))
+    r_data = first_level_src.xs(r_name, axis=1, level='regressor')
+    
+    with pd.HDFStore(file, mode='w', complib='blosc', complevel=7) as store:
+        store['options'] = pd.Series({'p_thresh': p_thresh})
+        
+        for chunk in chunks:
+            print('processing index %d to %d ...' % 
+                  (chunk.start, chunk.stop-1), flush=True)
+            
+            start = pd.datetime.now()
+            
+            c_data = r_data.iloc[chunk]
+            
+            # create store data frame
+            second_level_src = pd.DataFrame([], dtype=float, index=c_data.index, 
+                                            columns=sl_cols)
+            
+            for ind in range(c_data.shape[0]):
+                data = c_data.iloc[ind].dropna().values
+                
+                # some vertices do not exist for some subjects, so number of subjects varies
+                Sd = data.size
+                
+                fit2 = pystan.stan(fit=fit, data={'S': Sd, 'y': data},
+                                   iter=1000, chains=4)
+                samples = fit2.extract()
+                
+                second_level_src.ix[ind, 'mu_mean'] = samples['mu'].mean()
+                second_level_src.ix[ind, 'mu_std'] = samples['mu'].std()
+                second_level_src.ix[ind, 'mu_t'] = (
+                          second_level_src.ix[ind, 'mu_mean']
+                        / second_level_src.ix[ind, 'mu_std'])
+                second_level_src.ix[ind, 'mu_p_large'] = np.mean(
+                        samples['mu'] > p_thresh)
+                second_level_src.ix[ind, 'sigma_mean'] = samples['sigma'].mean()
+                second_level_src.ix[ind, 'sigma_std'] = samples['sigma'].std()
+                second_level_src.ix[ind, 'theta_mean'] = samples['theta'].mean()
+                second_level_src.ix[ind, 'theta_std'] = samples['theta'].std()
+                second_level_src.ix[ind, 'lp_mean'] = samples['lp__'].mean()
+                second_level_src.ix[ind, 'lp_std'] = samples['lp__'].std()
+                second_level_src.ix[ind, 'overlap'] = (
+                        scipy.stats.norm.logcdf(
+                                0, loc=second_level_src.ix[ind, 'mu_mean'], 
+                                scale=second_level_src.ix[ind, 'mu_std']))
+                second_level_src.ix[ind, 'consistency'] = (
+                        1 - np.mean(  (samples['theta'] > 0.25) 
+                                    & (samples['theta'] < 0.75)))
+                
+            end = pd.datetime.now()
+            print('elpased time for this chunk: %.2f min' %
+                  ((end-start).total_seconds() / 60, ))
+            
+            store.append('second_level_src', second_level_src)
+            
+        
