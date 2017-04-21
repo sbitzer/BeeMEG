@@ -22,7 +22,10 @@ import glob
 import pandas as pd
 
 
-subjects_dir = 'mne_subjects'
+if os.name == 'posix':
+    subjects_dir = 'mne_subjects'
+else:
+    subjects_dir = os.path.expanduser('~\\BeeMEG\\mne_subjects')
 subject = 'fsaverage'
 bem_dir = os.path.join(subjects_dir, subject, 'bem')
 fig_dir = os.path.join(subjects_dir, subject, 'figures')
@@ -51,9 +54,13 @@ def load_source_estimate(r_name='dot_x', f_pattern=''):
     return stc
 
 
-def make_movie(stc, hemi='lh', td=10):
-    brain = stc.plot(subject='fsaverage', surface='inflated', hemi=hemi)
+def make_movie(stc, hemi='lh', td=10, smoothing_steps=5, colvals=None):
+    brain = stc.plot(subject='fsaverage', surface='inflated', hemi=hemi, 
+                     smoothing_steps=smoothing_steps)
     brain.show_view(view[hemi])
+    
+    if colvals is not None:
+        brain.scale_data_colormap(*colvals)
     
     brain.save_movie(os.path.join(fig_dir, 'source_'+stc.resultid+'_'
                                            +stc.r_name+'_'+hemi+'.mp4'), 
@@ -101,6 +108,9 @@ def make_stc(srcfile, measure, r_name=None, src_df=None, transform=None,
             tstep=np.diff(data.columns.levels[1][:2])[0] / 1000.,
             subject='fsaverage')
         
+        stc.r_name = r_name
+        stc.resultid = measure
+        
     return stc
 
 
@@ -118,7 +128,7 @@ if __name__ == '__main__':
     
     stc = make_stc(srcfile, 'consistency', src_df=src_df, mask=mask)
     
-    brain = stc.plot(subject='fsaverage', surface='white', hemi='both',
+    brain = stc.plot(subject='fsaverage', surface='inflated', hemi='both',
                      colormap=masked_hot, transparent=False, 
                      clim={'kind': 'value', 'lims': [-1, 0, 1]},
-                     initial_time=0.3, smoothing_steps=5)
+                     initial_time=0.35, smoothing_steps=5)
