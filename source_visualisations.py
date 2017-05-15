@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
 Created on Mon Mar 20 14:39:46 2017
@@ -20,6 +20,8 @@ import mne
 import numpy as np
 import glob
 import pandas as pd
+from surfer import Brain
+import matplotlib
 
 
 if os.name == 'posix':
@@ -114,10 +116,66 @@ def make_stc(srcfile, measure, r_name=None, src_df=None, transform=None,
     return stc
 
 
-if __name__ == '__main__':
-    import matplotlib.cm as cm
+def show_labels(srcfile, measure, brain=None, r_name=None, src_df=None, 
+                transform=None, surface='white', time=0.17, labels=None):
+    parc = re.match('source_(\w+)_allsubs_\d+_slabs_\w+.h5', srcfile).group(1)
+    if labels is None:
+        labels = mne.read_labels_from_annot('fsaverage', parc=parc, hemi='both')
+        labels = {l.name: l for l in labels}
     
-    masked_hot = np.r_[np.zeros((128, 4)), cm.hot(np.linspace(0, 1, 128))] * 255
+    file = os.path.join(bem_dir, srcfile)
+    
+    if srcfile.find('_slabs_') >= 0:
+        slabsi = file.find('slabs_')
+        r_n = file[slabsi+6:-3]
+        if r_name is None:
+            r_name = r_n
+        elif r_name != r_n:
+            raise ValueError("Provided source file name and name of desired "
+                             "regressor are not compatible!")
+        
+    if src_df is None:
+        src_df = pd.read_hdf(file, 'second_level_src')
+        
+    if brain is None:
+        brain = Brain('fsaverage', 'both', surface, cortex='low_contrast',
+                      subjects_dir=subjects_dir)
+    else:
+        brain.remove_labels(hemi='rh')
+        brain.remove_labels(hemi='lh')
+    
+    data = src_df.loc[(slice(None), time), measure]
+    
+    if transform is not None:
+        data = transform(data)
+
+    vmin = 0.9
+    
+    norm = matplotlib.colors.Normalize(vmin, 1, clip=True)
+    alpha = matplotlib.colors.Normalize(vmin, (1-vmin)/2+vmin, clip=True)
+    
+    data = data[data > vmin]
+    
+    cmap = matplotlib.cm.hot
+    
+    print data
+    
+    for index, value in data.iteritems():
+        if index[0].startswith('L'):
+            hemi = 'left'
+        else:
+            hemi = 'right'
+        
+        print index[0]
+        brain.add_label(labels[index[0]], color=cmap(norm(value)), 
+                        alpha=alpha(value), hemi=hemi)
+        
+    return brain
+
+
+if __name__ == '__main__':
+    masked_hot = np.r_[np.zeros((128, 4)), 
+                       matplotlib.cm.hot(np.linspace(0, 1, 128))] * 255
     
     srcfile = 'source_allsubs_201703301614_slabs_accev.h5'
     src_df = pd.read_hdf(os.path.join(bem_dir, srcfile), 'second_level_src')
