@@ -15,11 +15,13 @@ import scipy.stats
 
 #%% options
 # store of first_level results
-basefile = 'source_allsubs_201703301614.h5'
+#basefile = 'source_allsubs_201703301614.h5'
+basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
 directory = 'mne_subjects/fsaverage/bem/'
 
 # regressors for which to infer across-subject strength
-r_names = ['dot_x', 'accev']
+r_names = ['accev', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'response', 'entropy',
+           'trial_time', 'intercept', 'accsur_pca']
 
 # threshold for "posterior probability of the existence of a medium sized 
 # effect", i.e., the probability that a sample from the posterior is > p_thresh
@@ -35,6 +37,10 @@ first_level_src = pd.read_hdf(os.path.join(directory, basefile),
 
 N = first_level_src.shape[0]
 S = first_level_src.columns.levshape[0]
+
+lenlabels = 0
+if type(first_level_src.index.levels[0][0]) == str:
+    lenlabels = max([len(l) for l in first_level_src.index.levels[0]])
 
 chunks = [slice(c*CS, min((c+1)*CS, N)) for c in range(int(np.ceil(N/CS)))]
 
@@ -132,6 +138,10 @@ for r_name in r_names:
             print('elpased time for this chunk: %.2f min' %
                   ((end-start).total_seconds() / 60, ))
             
-            store.append('second_level_src', second_level_src)
+            if lenlabels:
+                store.append('second_level_src', second_level_src, 
+                             min_itemsize={'label': lenlabels})
+            else:
+                store.append('second_level_src', second_level_src)
             
         
