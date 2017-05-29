@@ -22,6 +22,8 @@ import glob
 import pandas as pd
 from surfer import Brain
 import matplotlib
+import seaborn as sns
+import itertools
 
 
 if os.name == 'posix':
@@ -38,6 +40,101 @@ view = {'lh': {'azimuth': -55.936889415680255,
                'elevation': 28.757539951598851,
                'distance': 441.80865427261426,
                'focalpoint': np.r_[1.97380947, -20.13409592, -19.44953706]}}
+
+Glasser_sections = pd.read_csv('Glasser2016_sections.csv', index_col=0)
+Glasser_areas = pd.read_csv('Glasser2016_areas.csv', index_col=0)
+
+
+def set_regions(vseries, aggfun=lambda a: np.max(a, axis=0)):
+    """Set all vertices belonging to a Glasser region/section to one value.
+    
+        Based on a given aggregation function working on areas in the region.
+        vseries must be a pandas Series with label names (areas) in the index.
+    """
+    for section in Glasser_sections.index:
+        # find all areas in region
+        areas = Glasser_areas[Glasser_areas['main section'] == section]
+        
+        for hemi in ['l', 'r']:
+            # create full label names
+            labels = areas['area name'].map(
+                    lambda s: '%s_%s_ROI-%sh' % (hemi.upper(), s, hemi))
+            
+            # set values of all areas to that of aggregated value
+            values = vseries.loc[(labels, slice(None))]
+            values = values.reset_index(level='time').pivot(columns='time')
+            vseries.loc[(labels, slice(None))] = np.tile(
+                    aggfun(values).values, len(labels))
+            
+    return vseries
+
+
+def null_inconsistent(values, v_threshold, s_threshold=3):
+    """Sets all values to 0 that do not belong to a sequence of length 
+    s_threshold of values above v_threshold."""
+    mask = np.zeros_like(values, dtype=bool)
+    
+    start = 0
+    for key, group in itertools.groupby(values >= v_threshold):
+        length = sum(1 for _ in group)
+        if key == True and length >= s_threshold:
+            mask[start : start+length] = True
+        start += length
+    
+    values = values.copy()
+    values[~mask] = 0
+    
+    return values
+
+def null_inconsistent_measure(vseries, v_threshold, s_threshold=3):
+    """Applies null_inconsistent to all labels in the series, but not across 
+    labels."""
+    vseries = vseries.reset_index(level='label')
+    vdf = vseries.pivot(columns='label')
+    
+    vdf = vdf.apply(lambda x: null_inconsistent(x, v_threshold, s_threshold))
+    vdf = vdf.stack().reorder_levels(['label', 'time']).sort_index()
+    
+    return vdf[vdf.columns[0]]
+
+
+def find_slabs_threshold(srcfile, measure='mu_p_large', quantile=0.99, 
+                         bemdir=bem_dir, verbose=2):
+    """Finds a value threshold for a measure corresponding to a given quantile.
+    
+        Pools values of the measure across all fitted regressors. Then finds 
+        the value corresponding to the given quantile.
+    """
+    with pd.HDFStore(os.path.join(bemdir, srcfile), 'r') as store:
+        regressors = store.first_level_src.columns.levels[1]
+    
+    values = np.array([], dtype=float)
+    for r_name in regressors:
+        if r_name == 'intercept':
+            if verbose:
+                print('skipping intercept')
+            continue
+        
+        if verbose:
+            print('adding ' + r_name)
+        
+        fname = srcfile[:-3] + '_slabs_' + r_name + '.h5'
+        
+        with pd.HDFStore(os.path.join(bemdir, fname), 'r') as store:
+            values = np.r_[values, store.second_level_src[measure].values]
+    
+    if verbose:
+        print('N = %d' % values.size)
+    if verbose > 1:
+        fig, ax = sns.plt.subplots()
+        ax = sns.distplot(values, ax=ax)
+    
+    qval = np.percentile(values, quantile * 100)
+    
+    if verbose > 1:
+        ax.plot(qval*np.r_[1, 1], ax.get_ylim())
+    
+    return qval
 
 
 def load_source_estimate(r_name='dot_x', f_pattern=''):
@@ -114,6 +211,84 @@ def make_stc(srcfile, measure, r_name=None, src_df=None, transform=None,
         stc.resultid = measure
         
     return stc
+
+
+def show_labels_as_data(src_df, measure, brain, labels=None, transform=None,
+                        parc='HCPMMP1', transparent=None, colormap='auto',
+                        initial_time=None, colorbar=True, clim='auto',
+                        threshold=0, region_aggfun=None):
+    """Uses efficient brain.add_data to show activation of Glasser areas/labels.
+    
+        Set threshold > 0 to only show values that are above threshold for some
+        time steps (3 by default, cf. null_inconsistent).
+        
+        Set region_aggfun to some suitable function to aggregate Glasser 
+        areas/labels into regions/sections. 
+    """
+    
+    if type(src_df) == str:
+        parc = re.match('source_(\w+)_allsubs_\d+_slabs_\w+.h5', srcfile).group(1)
+        
+        file = os.path.join(bem_dir, srcfile)
+        src_df = pd.read_hdf(file, 'second_level_src')
+    
+    T = src_df.index.levels[1].size
+    values = src_df[measure]
+    
+    # remove 'insignificant' data
+    if threshold > 0:
+        values = null_inconsistent_measure(values, threshold)
+    # aggregate areas into regions
+    if region_aggfun is not None:
+        values = set_regions(values, region_aggfun)
+    
+    if labels is None:
+        # assume that no labels shown in brain, yet
+#        brain.add_annotation(parc)
+        
+        labels = mne.read_labels_from_annot('fsaverage', parc=parc, hemi='both')
+        labels = {l.name: l for l in labels}
+        
+    if len(labels) != src_df.index.levels[0].size:
+        raise ValueError('Number of labels ({}) does not fit to number of '
+                         'sources in data ({})!'.format(len(labels),
+                         src_df.index.levels[0].size))
+
+    # use MNE color stuff
+    ctrl_pts, colormap = mne.viz._3d._limits_to_control_points(
+            clim, src_df[measure], colormap)
+    if colormap in ('mne', 'mne_analyze'):
+        colormap = mne.viz.utils.mne_analyze_colormap(ctrl_pts)
+        scale_pts = [-1 * ctrl_pts[-1], 0, ctrl_pts[-1]]
+        transparent = False if transparent is None else transparent
+    else:
+        scale_pts = ctrl_pts
+        transparent = True if transparent is None else transparent
+
+    for hemi in ['lh', 'rh']:
+        # create data from source estimates
+        V = brain.geo[hemi].x.size
+        data = np.zeros((V, T))
+        for name in [l for l in labels.keys() if l.endswith(hemi)]:
+            data[labels[name].vertices, :] = values.xs(name, level='label')
+        
+        # plot
+        brain.add_data(data, time=src_df.index.levels[1].values, 
+                       time_label=lambda x: '%4d ms' % (x * 1000),
+                       colormap=colormap, colorbar=colorbar, hemi=hemi, 
+                       remove_existing=True)
+        
+    # scale colormap
+    if threshold > 0:
+        scale_pts[0] = threshold
+    brain.scale_data_colormap(fmin=scale_pts[0], fmid=scale_pts[1],
+                              fmax=scale_pts[2], transparent=transparent)
+    
+    # set time (index) to display
+    if initial_time is not None:
+        brain.set_time(initial_time)
+        
+    return labels
 
 
 def show_labels(srcfile, measure, brain=None, r_name=None, src_df=None, 
