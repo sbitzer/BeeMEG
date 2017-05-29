@@ -36,7 +36,7 @@ parcel index,area name,main section
 35,31pv,18
 36,5m,7
 37,5mv,7
-38,23c,7
+38,23c,18
 39,5L,7
 40,24dd,7
 41,24dv,7
@@ -75,7 +75,7 @@ parcel index,area name,main section
 74,44,21
 75,45,21
 76,47l,21
-77,a47r,21
+77,a47r,20
 78,6r,8
 79,IFJa,21
 80,IFJp,21
@@ -101,9 +101,9 @@ parcel index,area name,main section
 100,OP4,9
 101,OP1,9
 102,OP2-3,9
-103,52,10
+103,52,12
 104,RI,10
-105,PFcm,10
+105,PFcm,9
 106,PoI2,12
 107,TA2,11
 108,FOP4,12
@@ -133,7 +133,7 @@ parcel index,area name,main section
 132,TE1a,14
 133,TE1p,14
 134,TE2a,14
-135,TF,13
+135,TF,14
 136,TE2p,14
 137,PHT,14
 138,PH,5
@@ -164,7 +164,7 @@ parcel index,area name,main section
 163,VVC,4
 164,25,19
 165,s32,19
-166,pOFC,19
+166,pOFC,20
 167,PoI1,12
 168,Ig,12
 169,FOP5,12
