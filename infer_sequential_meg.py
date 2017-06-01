@@ -25,7 +25,8 @@ rt_thresh = 0.1
 
 # names of regressors that should enter the GLM
 r_names = ['abs_dot_y', 'abs_dot_x', 'dot_y', 'dot_x', 'entropy', 'trial_time', 
-           'intercept', 'accev', 'accsur_pca', 'response']
+           'intercept', 'accev', 'accsur_pca', 'response', 'dot_x_cflip', 
+           'accev_cflip']
 R = len(r_names)
 
 # do not look for 100 ms spaced equal effects for trial regressors, instead 

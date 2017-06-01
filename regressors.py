@@ -237,3 +237,13 @@ subject_trial_dot = pd.concat([subject_trial_dot,
         pd.concat([pca(sub) for sub in subjecti], keys=subjecti)], axis=1)
     
 del pca
+
+# dot_x with sign flipped by the choice of the subject
+subject_trial_dot['dot_x_cflip'] = (
+        np.tile(trial_dot.dot_x.values, 36)
+        * np.tile(subject_trial.response.values[:, None], [1, 25]).flatten())
+
+# accev with sign flipped by the choice of the subject
+subject_trial_dot['accev_cflip'] = (
+        subject_trial_dot.accev.values
+        * np.tile(subject_trial.response.values[:, None], [1, 25]).flatten())
