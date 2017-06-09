@@ -14,17 +14,20 @@ for further information about the pitfalls in trying to run mlab interactively
 @author: bitzer
 """
 
+from __future__ import print_function
+import sys
 import os
 import re
 import mne
 import numpy as np
 import glob
 import pandas as pd
-from surfer import Brain
 import matplotlib
 import seaborn as sns
 import itertools
 
+if sys.version_info < (3,):
+    from surfer import Brain
 
 if os.name == 'posix':
     subjects_dir = 'mne_subjects'
@@ -137,13 +140,126 @@ def find_slabs_threshold(srcfile, measure='mu_p_large', quantile=0.99,
     return qval
 
 
+def show_timecourses(tc_df, ylim, L=3):
+    labels = tc_df.columns.get_level_values(1).unique()
+    cols = matplotlib.cm.Paired(np.linspace(0, 1, 12))
+    cols = cols[np.mod(np.arange(len(labels)), 12)]
+    cols = {k: v for k, v in zip(labels, cols)}
+    
+    def update_cols(ax, df, inds):
+        lines = ax.get_lines()
+        for line, name in zip(lines, df.columns[inds]):
+            line.set_color(cols[name])
+    
+    for hemi in ['L', 'R']:
+        active = tc_df.loc[:, hemi]
+        N = active.shape[1]
+        
+        if N > 0:
+            fig, axes = sns.plt.subplots(int(np.ceil(N/float(L))), 1, sharex=True)
+            
+            try:
+                for i, ax in enumerate(axes):
+                    inds = slice(i*L, (i+1)*L)
+                    active.iloc[:, inds].plot.line(ax=ax)
+                    update_cols(ax, active, inds)
+                    ax.set_ylim(*ylim)
+                    ax.legend(loc='best')
+                axes[0].set_title('hemisphere: ' + hemi)
+                
+            except TypeError:
+                inds = slice(0, L)
+                active.iloc[:, inds].plot.line(ax=axes)
+                update_cols(axes, active, inds)
+                axes.legend(loc='best')
+                axes.set_ylim(*ylim)
+                axes.set_title('hemisphere: ' + hemi)
+
+
+def get_significant_areas_in_time(measure_series, threshold, timewindow):
+    values = null_inconsistent_measure(measure_series, threshold)
+    values_tmp = values.loc[(slice(None), slice(*timewindow))]
+    values_tmp = values_tmp.reset_index(level='label').pivot(columns='label')
+    labels = values_tmp.columns.get_level_values('label')[values_tmp.sum() > 0]
+    del values_tmp
+    
+    areas = pd.Series(np.unique(labels.map(lambda l: l[2:-7])))
+    
+    area_values = pd.DataFrame(
+            [], dtype=float, index=values.index.levels[1], columns=
+            pd.MultiIndex.from_product([['L', 'R'], areas], 
+                                       names = ['hemi', 'region']))
+
+    for hemi in ['l', 'r']:
+        # create full label names
+        labels = areas.map(
+                lambda s: '%s_%s_ROI-%sh' % (hemi.upper(), s, hemi))
+        
+        # set values of all areas to that of aggregated value
+        avals = values.loc[(labels, slice(None))]
+        avals = avals.reset_index(level='time').pivot(columns='time')
+        area_values.loc[:, (hemi.upper(), slice(None))] = avals.values.T
+
+    return area_values.drop(area_values.columns[area_values.sum() == 0], axis=1)
+
+
+def get_significant_areas_in_region(measure_series, threshold, region):
+    areas = Glasser_areas[Glasser_areas['main section'] == region]
+    areas = areas.sort_values('area name')
+    
+    values = null_inconsistent_measure(measure_series, threshold)
+    
+    area_values = pd.DataFrame(
+            [], dtype=float, index=values.index.levels[1], columns=
+            pd.MultiIndex.from_product([['L', 'R'], areas['area name']], 
+                                       names = ['hemi', 'region']))
+
+    for hemi in ['l', 'r']:
+        # create full label names
+        labels = areas['area name'].map(
+                lambda s: '%s_%s_ROI-%sh' % (hemi.upper(), s, hemi))
+        
+        # set values of all areas to that of aggregated value
+        avals = values.loc[(labels, slice(None))]
+        avals = avals.reset_index(level='time').pivot(columns='time')
+        area_values.loc[:, (hemi.upper(), slice(None))] = avals.values.T
+
+    return area_values.drop(area_values.columns[area_values.sum() == 0], axis=1)
+
+
+def get_significant_regions(measure_series, threshold, 
+                            region_aggfun=lambda a: np.max(a, axis=0)):
+    values = null_inconsistent_measure(measure_series, threshold)
+    
+    regions = pd.DataFrame(
+            [], dtype=float, index=values.index.levels[1], columns=
+            pd.MultiIndex.from_product([['L', 'R'], Glasser_sections.name], 
+                                       names = ['hemi', 'region']))
+    for section in Glasser_sections.index:
+        # find all areas in region
+        areas = Glasser_areas[Glasser_areas['main section'] == section]
+        
+        for hemi in ['l', 'r']:
+            # create full label names
+            labels = areas['area name'].map(
+                    lambda s: '%s_%s_ROI-%sh' % (hemi.upper(), s, hemi))
+            
+            # set values of all areas to that of aggregated value
+            avals = values.loc[(labels, slice(None))]
+            avals = avals.reset_index(level='time').pivot(columns='time')
+            regions.loc[:, (hemi.upper(), Glasser_sections.loc[section, 'name'])] = (
+                    region_aggfun(avals).values)
+    
+    return regions.drop(regions.columns[regions.sum() == 0], axis=1)
+
+
 def load_source_estimate(r_name='dot_x', f_pattern=''):
     # find files
     files = glob.glob(os.path.join(  bem_dir, '*' + f_pattern 
                                    + r_name + '-lh.stc'))
     
     if len(files) > 0:
-        print "using file: " + files[0]
+        print("using file: " + files[0])
         stc = mne.read_source_estimate(files[0])
         stc.resultid = resultid_re.match(files[0]).groups()[0]
         stc.r_name = r_name
@@ -151,28 +267,6 @@ def load_source_estimate(r_name='dot_x', f_pattern=''):
         raise ValueError('No appropriate source file found!')
     
     return stc
-
-
-def make_movie(stc, hemi='lh', td=10, smoothing_steps=5, colvals=None):
-    brain = stc.plot(subject='fsaverage', surface='inflated', hemi=hemi, 
-                     smoothing_steps=smoothing_steps)
-    brain.show_view(view[hemi])
-    
-    if colvals is not None:
-        brain.scale_data_colormap(*colvals)
-    
-    brain.save_movie(os.path.join(fig_dir, 'source_'+stc.resultid+'_'
-                                           +stc.r_name+'_'+hemi+'.mp4'), 
-                                  time_dilation=td)
-        
-    return brain
-
-    
-def time_viewer(stc, hemi='both'):
-    brain = stc.plot(subject='fsaverage', surface='inflated', 
-                     time_viewer=True, hemi=hemi)
-    
-    return brain
 
 
 def make_stc(srcfile, measure, r_name=None, src_df=None, transform=None, 
@@ -213,139 +307,162 @@ def make_stc(srcfile, measure, r_name=None, src_df=None, transform=None,
     return stc
 
 
-def show_labels_as_data(src_df, measure, brain, labels=None, transform=None,
-                        parc='HCPMMP1', transparent=None, colormap='auto',
-                        initial_time=None, colorbar=True, clim='auto',
-                        threshold=0, region_aggfun=None):
-    """Uses efficient brain.add_data to show activation of Glasser areas/labels.
-    
-        Set threshold > 0 to only show values that are above threshold for some
-        time steps (3 by default, cf. null_inconsistent).
+if sys.version_info < (3,):
+    def make_movie(stc, hemi='lh', td=10, smoothing_steps=5, colvals=None):
+        brain = stc.plot(subject='fsaverage', surface='inflated', hemi=hemi, 
+                         smoothing_steps=smoothing_steps)
+        brain.show_view(view[hemi])
         
-        Set region_aggfun to some suitable function to aggregate Glasser 
-        areas/labels into regions/sections. 
-    """
+        if colvals is not None:
+            brain.scale_data_colormap(*colvals)
+        
+        brain.save_movie(os.path.join(fig_dir, 'source_'+stc.resultid+'_'
+                                               +stc.r_name+'_'+hemi+'.mp4'), 
+                                      time_dilation=td)
+            
+        return brain
     
-    if type(src_df) == str:
+        
+    def time_viewer(stc, hemi='both'):
+        brain = stc.plot(subject='fsaverage', surface='inflated', 
+                         time_viewer=True, hemi=hemi)
+        
+        return brain
+    
+    
+    def show_labels_as_data(src_df, measure, brain, labels=None, transform=None,
+                            parc='HCPMMP1', transparent=None, colormap='auto',
+                            initial_time=None, colorbar=True, clim='auto',
+                            threshold=0, region_aggfun=None):
+        """Uses efficient brain.add_data to show activation of Glasser areas/labels.
+        
+            Set threshold > 0 to only show values that are above threshold for some
+            time steps (3 by default, cf. null_inconsistent).
+            
+            Set region_aggfun to some suitable function to aggregate Glasser 
+            areas/labels into regions/sections. 
+        """
+        
+        if type(src_df) == str:
+            parc = re.match('source_(\w+)_allsubs_\d+_slabs_\w+.h5', srcfile).group(1)
+            
+            file = os.path.join(bem_dir, srcfile)
+            src_df = pd.read_hdf(file, 'second_level_src')
+        
+        T = src_df.index.levels[1].size
+        values = src_df[measure]
+        
+        # remove 'insignificant' data
+        if threshold > 0:
+            values = null_inconsistent_measure(values, threshold)
+        # aggregate areas into regions
+        if region_aggfun is not None:
+            values = set_regions(values, region_aggfun)
+        
+        if labels is None:
+            # assume that no labels shown in brain, yet
+    #        brain.add_annotation(parc)
+            
+            labels = mne.read_labels_from_annot('fsaverage', parc=parc, hemi='both')
+            labels = {l.name: l for l in labels}
+            
+        if len(labels) != src_df.index.levels[0].size:
+            raise ValueError('Number of labels ({}) does not fit to number of '
+                             'sources in data ({})!'.format(len(labels),
+                             src_df.index.levels[0].size))
+    
+        # use MNE color stuff
+        ctrl_pts, colormap = mne.viz._3d._limits_to_control_points(
+                clim, src_df[measure], colormap)
+        if colormap in ('mne', 'mne_analyze'):
+            colormap = mne.viz.utils.mne_analyze_colormap(ctrl_pts)
+            scale_pts = [-1 * ctrl_pts[-1], 0, ctrl_pts[-1]]
+            transparent = False if transparent is None else transparent
+        else:
+            scale_pts = ctrl_pts
+            transparent = True if transparent is None else transparent
+    
+        for hemi in ['lh', 'rh']:
+            # create data from source estimates
+            V = brain.geo[hemi].x.size
+            data = np.zeros((V, T))
+            for name in [l for l in labels.keys() if l.endswith(hemi)]:
+                data[labels[name].vertices, :] = values.xs(name, level='label')
+            
+            # plot
+            brain.add_data(data, time=src_df.index.levels[1].values, 
+                           time_label=lambda x: '%4d ms' % (x * 1000),
+                           colormap=colormap, colorbar=colorbar, hemi=hemi, 
+                           remove_existing=True)
+            
+        # scale colormap
+        if threshold > 0:
+            scale_pts[0] = threshold
+        brain.scale_data_colormap(fmin=scale_pts[0], fmid=scale_pts[1],
+                                  fmax=scale_pts[2], transparent=transparent)
+        
+        # set time (index) to display
+        if initial_time is not None:
+            brain.set_time(initial_time)
+            
+        return labels
+    
+    
+    def show_labels(srcfile, measure, brain=None, r_name=None, src_df=None, 
+                    transform=None, surface='white', time=0.17, labels=None):
         parc = re.match('source_(\w+)_allsubs_\d+_slabs_\w+.h5', srcfile).group(1)
+        if labels is None:
+            labels = mne.read_labels_from_annot('fsaverage', parc=parc, hemi='both')
+            labels = {l.name: l for l in labels}
         
         file = os.path.join(bem_dir, srcfile)
-        src_df = pd.read_hdf(file, 'second_level_src')
-    
-    T = src_df.index.levels[1].size
-    values = src_df[measure]
-    
-    # remove 'insignificant' data
-    if threshold > 0:
-        values = null_inconsistent_measure(values, threshold)
-    # aggregate areas into regions
-    if region_aggfun is not None:
-        values = set_regions(values, region_aggfun)
-    
-    if labels is None:
-        # assume that no labels shown in brain, yet
-#        brain.add_annotation(parc)
         
-        labels = mne.read_labels_from_annot('fsaverage', parc=parc, hemi='both')
-        labels = {l.name: l for l in labels}
-        
-    if len(labels) != src_df.index.levels[0].size:
-        raise ValueError('Number of labels ({}) does not fit to number of '
-                         'sources in data ({})!'.format(len(labels),
-                         src_df.index.levels[0].size))
-
-    # use MNE color stuff
-    ctrl_pts, colormap = mne.viz._3d._limits_to_control_points(
-            clim, src_df[measure], colormap)
-    if colormap in ('mne', 'mne_analyze'):
-        colormap = mne.viz.utils.mne_analyze_colormap(ctrl_pts)
-        scale_pts = [-1 * ctrl_pts[-1], 0, ctrl_pts[-1]]
-        transparent = False if transparent is None else transparent
-    else:
-        scale_pts = ctrl_pts
-        transparent = True if transparent is None else transparent
-
-    for hemi in ['lh', 'rh']:
-        # create data from source estimates
-        V = brain.geo[hemi].x.size
-        data = np.zeros((V, T))
-        for name in [l for l in labels.keys() if l.endswith(hemi)]:
-            data[labels[name].vertices, :] = values.xs(name, level='label')
-        
-        # plot
-        brain.add_data(data, time=src_df.index.levels[1].values, 
-                       time_label=lambda x: '%4d ms' % (x * 1000),
-                       colormap=colormap, colorbar=colorbar, hemi=hemi, 
-                       remove_existing=True)
-        
-    # scale colormap
-    if threshold > 0:
-        scale_pts[0] = threshold
-    brain.scale_data_colormap(fmin=scale_pts[0], fmid=scale_pts[1],
-                              fmax=scale_pts[2], transparent=transparent)
-    
-    # set time (index) to display
-    if initial_time is not None:
-        brain.set_time(initial_time)
-        
-    return labels
-
-
-def show_labels(srcfile, measure, brain=None, r_name=None, src_df=None, 
-                transform=None, surface='white', time=0.17, labels=None):
-    parc = re.match('source_(\w+)_allsubs_\d+_slabs_\w+.h5', srcfile).group(1)
-    if labels is None:
-        labels = mne.read_labels_from_annot('fsaverage', parc=parc, hemi='both')
-        labels = {l.name: l for l in labels}
-    
-    file = os.path.join(bem_dir, srcfile)
-    
-    if srcfile.find('_slabs_') >= 0:
-        slabsi = file.find('slabs_')
-        r_n = file[slabsi+6:-3]
-        if r_name is None:
-            r_name = r_n
-        elif r_name != r_n:
-            raise ValueError("Provided source file name and name of desired "
-                             "regressor are not compatible!")
-        
-    if src_df is None:
-        src_df = pd.read_hdf(file, 'second_level_src')
-        
-    if brain is None:
-        brain = Brain('fsaverage', 'both', surface, cortex='low_contrast',
-                      subjects_dir=subjects_dir)
-    else:
-        brain.remove_labels(hemi='rh')
-        brain.remove_labels(hemi='lh')
-    
-    data = src_df.loc[(slice(None), time), measure]
-    
-    if transform is not None:
-        data = transform(data)
-
-    vmin = 0.9
-    
-    norm = matplotlib.colors.Normalize(vmin, 1, clip=True)
-    alpha = matplotlib.colors.Normalize(vmin, (1-vmin)/2+vmin, clip=True)
-    
-    data = data[data > vmin]
-    
-    cmap = matplotlib.cm.hot
-    
-    print data
-    
-    for index, value in data.iteritems():
-        if index[0].startswith('L'):
-            hemi = 'left'
+        if srcfile.find('_slabs_') >= 0:
+            slabsi = file.find('slabs_')
+            r_n = file[slabsi+6:-3]
+            if r_name is None:
+                r_name = r_n
+            elif r_name != r_n:
+                raise ValueError("Provided source file name and name of desired "
+                                 "regressor are not compatible!")
+            
+        if src_df is None:
+            src_df = pd.read_hdf(file, 'second_level_src')
+            
+        if brain is None:
+            brain = Brain('fsaverage', 'both', surface, cortex='low_contrast',
+                          subjects_dir=subjects_dir)
         else:
-            hemi = 'right'
+            brain.remove_labels(hemi='rh')
+            brain.remove_labels(hemi='lh')
         
-        print index[0]
-        brain.add_label(labels[index[0]], color=cmap(norm(value)), 
-                        alpha=alpha(value), hemi=hemi)
+        data = src_df.loc[(slice(None), time), measure]
         
-    return brain
+        if transform is not None:
+            data = transform(data)
+    
+        vmin = 0.9
+        
+        norm = matplotlib.colors.Normalize(vmin, 1, clip=True)
+        alpha = matplotlib.colors.Normalize(vmin, (1-vmin)/2+vmin, clip=True)
+        
+        data = data[data > vmin]
+        
+        cmap = matplotlib.cm.hot
+        
+        print(data)
+        
+        for index, value in data.iteritems():
+            if index[0].startswith('L'):
+                hemi = 'left'
+            else:
+                hemi = 'right'
+            
+            print(index[0])
+            brain.add_label(labels[index[0]], color=cmap(norm(value)), 
+                            alpha=alpha(value), hemi=hemi)
+            
+        return brain
 
 
 if __name__ == '__main__':
@@ -361,7 +478,8 @@ if __name__ == '__main__':
     
     stc = make_stc(srcfile, 'consistency', src_df=src_df, mask=mask)
     
-    brain = stc.plot(subject='fsaverage', surface='inflated', hemi='both',
-                     colormap=masked_hot, transparent=False, 
-                     clim={'kind': 'value', 'lims': [-1, 0, 1]},
-                     initial_time=0.35, smoothing_steps=5)
+    if sys.version_info < (3,):
+        brain = stc.plot(subject='fsaverage', surface='inflated', hemi='both',
+                         colormap=masked_hot, transparent=False, 
+                         clim={'kind': 'value', 'lims': [-1, 0, 1]},
+                         initial_time=0.35, smoothing_steps=5)
