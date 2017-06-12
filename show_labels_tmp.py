@@ -7,7 +7,12 @@ import matplotlib.pyplot as plt
 
 r_name = 'dot_x'
 measure = 'mu_p_large'
-basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
+
+# baseline [-0.3, 0], trialregs_dot=5
+#basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
+# baseline None, trialregs_dot=5
+basefile = 'source_HCPMMP1_allsubs_201706091054.h5'
+
 srcfile = basefile[:-3] + '_slabs_%s.h5' % r_name
 file = 'mne_subjects/fsaverage/bem/' + srcfile
 src_df = pd.read_hdf(file, 'second_level_src')
@@ -25,9 +30,9 @@ threshold = sv.find_slabs_threshold(basefile, measure, quantile=0.95, verbose=1)
 
 
 #%% show region time courses
-#active = sv.get_significant_areas_in_region(src_df[measure], threshold, 18)
-active = sv.get_significant_areas_in_time(src_df[measure], threshold, [0.3, 0.35])
-#active = sv.get_significant_regions(src_df[measure], threshold)
+#active = sv.get_significant_areas_in_region(src_df[measure], threshold, 16)
+#active = sv.get_significant_areas_in_time(src_df[measure], threshold, [0.4, 0.49])
+active = sv.get_significant_regions(src_df[measure], threshold)
 
 sv.show_timecourses(active, [threshold, 1])
     

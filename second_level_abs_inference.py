@@ -16,11 +16,16 @@ import scipy.stats
 #%% options
 # store of first_level results
 #basefile = 'source_allsubs_201703301614.h5'
-basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
+
+# baseline [-0.3, 0], trialregs_dot=5
+#basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
+# baseline None, trialregs_dot=5
+basefile = 'source_HCPMMP1_allsubs_201706091054.h5'
+
 directory = 'mne_subjects/fsaverage/bem/'
 
 # regressors for which to infer across-subject strength
-r_names = ['accev', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'response', 'entropy',
+r_names = ['accev', 'dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'response', 'entropy',
            'trial_time', 'intercept', 'accsur_pca']
 
 # threshold for "posterior probability of the existence of a medium sized 

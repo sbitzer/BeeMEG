@@ -33,7 +33,7 @@ def get(srcres_file, atlas_name='HCPMMP1', agg_mode='mean_flip',
         subjects=subjects, r_names=None):
     subjects = np.atleast_1d(subjects)
     
-    # get used options for desirec source result
+    # get used options for desired source result
     srcopt = pd.read_hdf(os.path.join(subjects_dir, 'fsaverage', 'bem', 
                                       srcres_file), 'options')
     inffile_base = srcopt.inffile_base
@@ -93,10 +93,17 @@ def get(srcres_file, atlas_name='HCPMMP1', agg_mode='mean_flip',
             
             
 if __name__ == '__main__':
-    label_tc, label_nv = get('source_allsubs_201703301614.h5')
+    # baseline [-0.3, 0], trialregs_dot=5
+#    srcres_file = 'source_allsubs_201703301614.h5'
+    # baseline None, trialregs_dot=5
+    srcres_file = 'source_allsubs_201706091054.h5'
+    
+    atlas_name = 'HCPMMP1'
+    
+    label_tc, label_nv = get(srcres_file)
     
     with pd.HDFStore(
-            os.path.join(subjects_dir, 'fsaverage', 'bem', 
-                         'source_HCPMMP1_allsubs_201703301614.h5')) as store:
+            os.path.join(subjects_dir, 'fsaverage', 'bem', '{}_{}_{}'.format(
+            'source', atlas_name, srcres_file[7:]))) as store:
         store['first_level_src'] = label_tc
         store['label_nv'] = label_nv

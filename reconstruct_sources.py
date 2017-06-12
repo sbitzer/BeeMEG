@@ -17,9 +17,9 @@ import scipy.stats
 
 #%% options
 # baseline [-0.3, 0], trialregs_dot=5
-inffile_base = 'meg_sequential_201703011927'
+#inffile_base = 'meg_sequential_201703011927'
 # no baseline, trialregs_dot=5
-#inffile_base = 'meg_sequential_201703161307'
+inffile_base = 'meg_sequential_201703161307'
 inffile = os.path.join(helpers.resultsdir, inffile_base+'.h5')
 
 # statistical measure of first level to be used for source reconstruction
