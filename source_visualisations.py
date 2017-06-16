@@ -101,15 +101,16 @@ def null_inconsistent_measure(vseries, v_threshold, s_threshold=3):
     return vdf[vdf.columns[0]]
 
 
-def find_slabs_threshold(srcfile, measure='mu_p_large', quantile=0.99, 
-                         bemdir=bem_dir, verbose=2):
+def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99, 
+                         bemdir=bem_dir, regressors=None, verbose=2):
     """Finds a value threshold for a measure corresponding to a given quantile.
     
         Pools values of the measure across all fitted regressors. Then finds 
         the value corresponding to the given quantile.
     """
-    with pd.HDFStore(os.path.join(bemdir, srcfile), 'r') as store:
-        regressors = store.first_level_src.columns.levels[1]
+    if regressors is None:
+        with pd.HDFStore(os.path.join(bemdir, basefile), 'r') as store:
+            regressors = store.first_level_src.columns.levels[1]
     
     values = np.array([], dtype=float)
     for r_name in regressors:
@@ -121,7 +122,7 @@ def find_slabs_threshold(srcfile, measure='mu_p_large', quantile=0.99,
         if verbose:
             print('adding ' + r_name)
         
-        fname = srcfile[:-3] + '_slabs_' + r_name + '.h5'
+        fname = basefile[:-3] + '_slabs_' + r_name + '.h5'
         
         with pd.HDFStore(os.path.join(bemdir, fname), 'r') as store:
             values = np.r_[values, store.second_level_src[measure].values]

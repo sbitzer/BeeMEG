@@ -6,12 +6,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 r_name = 'dot_x'
-measure = 'mu_p_large'
+measure = 'mu_t'
 
 # baseline [-0.3, 0], trialregs_dot=5
-#basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
+basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
 # baseline None, trialregs_dot=5
-basefile = 'source_HCPMMP1_allsubs_201706091054.h5'
+#basefile = 'source_HCPMMP1_allsubs_201706091054.h5'
+# baseline (-0.3, 0), trialregs_dot=5, GLM in source space
+#basefile = 'source_sequential_201706141650.h5'
 
 srcfile = basefile[:-3] + '_slabs_%s.h5' % r_name
 file = 'mne_subjects/fsaverage/bem/' + srcfile
@@ -20,7 +22,11 @@ src_df = pd.read_hdf(file, 'second_level_src')
 #brain = Brain('fsaverage', 'both', 'inflated', cortex='low_contrast',
 #              subjects_dir=sv.subjects_dir)
 
-threshold = sv.find_slabs_threshold(basefile, measure, quantile=0.95, verbose=1)
+#with pd.HDFStore('data/inf_results/' + basefile, 'r') as store:
+#    regressors = store.first_level.columns.levels[2]
+regressors = None
+threshold = sv.find_slabs_threshold(basefile, measure, quantile=0.95, 
+                                    regressors=regressors, verbose=1)
 
 #labels = sv.show_labels_as_data(src_df, measure, brain, transparent=True,
 #                                threshold=threshold, 
@@ -30,11 +36,11 @@ threshold = sv.find_slabs_threshold(basefile, measure, quantile=0.95, verbose=1)
 
 
 #%% show region time courses
-#active = sv.get_significant_areas_in_region(src_df[measure], threshold, 16)
-#active = sv.get_significant_areas_in_time(src_df[measure], threshold, [0.4, 0.49])
-active = sv.get_significant_regions(src_df[measure], threshold)
+active = sv.get_significant_areas_in_region(src_df[measure], threshold, 3)
+#active = sv.get_significant_areas_in_time(src_df[measure], threshold, [250, 250])
+#active = sv.get_significant_regions(src_df[measure], threshold)
 
-sv.show_timecourses(active, [threshold, 1])
+sv.show_timecourses(active, [threshold, 8])
     
 plt.show()
 
