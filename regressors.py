@@ -41,6 +41,32 @@ trial_dot = pd.DataFrame([], index=pd.MultiIndex.from_product([triali, doti],
 trial_dot['dot_x'] = dotpos[:, 0, :].flatten('F')
 trial_dot['dot_y'] = dotpos[:, 1, :].flatten('F')
 
+# summed dotpos, is proportional to summed log-likelihood ratio for dot_x, 
+# for both x and y it's also a measure of the mean position within the trial
+trial_dot['sum_dot_x'] = dotpos[:, 0, :].cumsum(axis=0).flatten('F')
+trial_dot['sum_dot_y'] = dotpos[:, 1, :].cumsum(axis=0).flatten('F')
+
+# summed dotpos up to the previous dot
+trial_dot['sum_dot_x_prev'] = np.zeros(trial_dot.shape[0])
+trial_dot.loc[(slice(None), slice(2, 25)), 'sum_dot_x_prev'] = \
+    trial_dot.loc[(slice(None), slice(1, 24)), 'sum_dot_x'].values
+trial_dot['sum_dot_y_prev'] = np.zeros(trial_dot.shape[0])
+trial_dot.loc[(slice(None), slice(2, 25)), 'sum_dot_y_prev'] = \
+    trial_dot.loc[(slice(None), slice(1, 24)), 'sum_dot_y'].values
+
+# distance to center of screen
+trial_dot['dot_dist'] = np.sqrt(trial_dot.dot_x ** 2 + trial_dot.dot_y ** 2)
+
+# relative dot movement: taking previous dot as centre, where did the dot jump?
+trial_dot['move_x'] = np.r_[np.zeros((1, dotpos.shape[2])), 
+                            np.diff(dotpos[:, 0, :], axis=0)].flatten('F')
+trial_dot['move_y'] = np.r_[np.zeros((1, dotpos.shape[2])), 
+                            np.diff(dotpos[:, 1, :], axis=0)].flatten('F')
+
+# how far did the dot jump?
+trial_dot['move_dist'] = np.r_[np.zeros((1, dotpos.shape[2])), 
+                               np.sqrt(np.sum(np.diff(dotpos, axis=0) ** 2, axis=1))].flatten('F')
+
 # absolute dot-positions (measure distance to centre of axis; this is
 # strongly related to momentary surprise about the corresponding x or y 
 # component, the difference being that surprise is a parabola whereas the 
