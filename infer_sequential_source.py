@@ -117,11 +117,11 @@ dotregs = []
 for col in DM.columns:
     if col[-2:] == '_%d' % dots[0]:
         dotregs.append(col[:-2])
-otherregs = list(np.setdiff1d(r_names, dotregs))
+trialregs = list(np.setdiff1d(r_names, dotregs))
         
 def get_dot_DM(DM, dot):
     rn = list(map(lambda s: s+'_%d' % dot, dotregs))
-    DMdot = DM[otherregs + rn]
+    DMdot = DM[trialregs + rn]
     return DMdot.rename(columns=dict(zip(rn, dotregs)))
 
 DM = pd.concat([get_dot_DM(DM, dot) for dot in dots], keys=dots, 
@@ -130,15 +130,35 @@ DM = DM.reorder_levels(['subject', 'trial', 'dot']).sort_index()
 DM.sort_index(axis=1, inplace=True)
 
 
-#%% normalise data and regressors to simplify definition of priors
-DM = (DM - DM.mean()) / DM.std()
-# intercept will be nan, because it has no variance
-DM['intercept'] = 1
+#%% normalise data and regressors to simplify interpretation
+# find regressors that have constant value for the first dot
+dmstds = DM.loc[(subjects[0], slice(None), 1)].std()
+constregs = dmstds[np.isclose(dmstds, 0)].index
+# don't care about intercept
+constregs = constregs[constregs != 'intercept']
+
+# only dot-level regressor should be constant for the first dot, 
+# otherwise something's wrong
+assert np.setdiff1d(constregs, dotregs).size == 0
+
+otherregs = np.setdiff1d(r_names, list(constregs)+['intercept'])
+
+# for constregs I need to exclude first dot data from normalisation
+DM2const = DM.loc[(slice(None), slice(None), slice(2, dots[-1])), constregs]
+DM[constregs] = (DM[constregs] - DM2const.mean()) / DM2const.std()
+del DM2const
+
+# then set first dot values of constregs to 0 to exclude that they have any
+# influence on the estimation of the regressor betas
+DM.loc[(slice(None), slice(None), 1), constregs] = 0
+
+# other regressors can be normalised in the standard way
+DM[otherregs] = (DM[otherregs] - DM[otherregs].mean()) / DM[otherregs].std()
 
 # set trial regressors to 0 for all except the chosen dot
 if trialregs_dot:
     DM.loc[(slice(None), slice(None), np.setdiff1d(dots, trialregs_dot)), 
-           list(np.setdiff1d(otherregs, 'intercept'))] = 0
+           list(np.setdiff1d(trialregs, 'intercept'))] = 0
 
 # just get mean and std of data across all subjects, trials and times
 epochs_mean = pd.read_hdf(srcfile, 'epochs_mean')
@@ -205,12 +225,11 @@ for perm in np.arange(nperm+1):
     
     with pd.HDFStore(srcfile, 'r') as store:
         for s, sub in enumerate(subjects):
-            print('sub = %d' % sub)
             epochs = store.select('label_tc', 'subject=sub')
             epochs.loc[:] = epochs.values[permutation.flatten(), :]
             
             for t0 in times[:tendi+1]:
-                print('t0 = %d' % t0)
+                print('\rsubject = %2d, t0 = %3d' % (sub, t0), end='')
         
                 datat = get_data_times(t0)
                 
@@ -233,7 +252,7 @@ for perm in np.arange(nperm+1):
                     first_level_diagnostics.loc[(perm, label, t0), (sub, 'llf')] = (
                         res.llf)
     
-    print('computing second level ...') 
+    print('\ncomputing second level ...')
     for label in srclabels:
         for t0 in times[:tendi+1]:
             params = first_level.loc[(perm, label, t0), 
