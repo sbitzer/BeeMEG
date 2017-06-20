@@ -22,17 +22,17 @@ import scipy.stats
 # baseline None, trialregs_dot=5
 #basefile = 'source_HCPMMP1_allsubs_201706091054.h5'
 # baseline (-0.3, 0), trialregs_dot=5, GLM in source space
-basefile = 'source_sequential_201706141650.h5'
+basefile = 'source_sequential_201706191442.h5'
 
 directory = 'mne_subjects/fsaverage/bem/'
 
 # regressors for which to infer across-subject strength
-r_names = ['dot_x', 'accev', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'response', 'entropy',
+r_names = ['sum_dot_y_prev', 'dot_x', 'accev', 'dot_y', 'move_dist', 'abs_dot_x', 'abs_dot_y', 'response', 'entropy',
            'trial_time', 'intercept', 'accsur_pca', 'dot_x_cflip', 'accev_cflip']
 
 # threshold for "posterior probability of the existence of a medium sized 
 # effect", i.e., the probability that a sample from the posterior is > p_thresh
-p_thresh = 0.5
+p_thresh = 0.02
 
 # chunksize: store results every CS iterations
 CS = 5000
@@ -41,7 +41,7 @@ CS = 5000
 #%% load data
 #first_level_src = pd.read_hdf(os.path.join(directory, basefile), 
 #                              'first_level_src')
-first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201706141650.h5.tmp',
+first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201706191442.h5.tmp',
                               'first_level')
 first_level_src = first_level_src.xs(0, level='permnr').xs('beta', level='measure', axis=1)
 
@@ -125,7 +125,7 @@ for r_name in r_names:
                 
                 second_level_src.ix[ind, 'mu_mean'] = samples['mu'].mean()
                 second_level_src.ix[ind, 'mu_std'] = samples['mu'].std()
-                second_level_src.ix[ind, 'mu_t'] = (
+                second_level_src.ix[ind, 'mu_z'] = (
                           second_level_src.ix[ind, 'mu_mean']
                         / second_level_src.ix[ind, 'mu_std'])
                 second_level_src.ix[ind, 'mu_p_large'] = np.mean(
