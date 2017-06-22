@@ -102,23 +102,36 @@ def null_inconsistent_measure(vseries, v_threshold, s_threshold=3):
 
 
 def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99, 
-                         bemdir=bem_dir, regressors=None, verbose=2):
+                         bemdir=bem_dir, regressors=None, 
+                         exclude='trialregs', verbose=2):
     """Finds a value threshold for a measure corresponding to a given quantile.
     
         Pools values of the measure across all fitted regressors. Then finds 
         the value corresponding to the given quantile.
     """
+    
     if regressors is None:
-        with pd.HDFStore(os.path.join(bemdir, basefile), 'r') as store:
-            regressors = store.first_level_src.columns.levels[1]
+        try:
+            with pd.HDFStore(os.path.join(bemdir, basefile), 'r') as store:
+                regressors = store.first_level_src.columns.levels[1]
+        except (FileNotFoundError, OSError):
+            with pd.HDFStore(os.path.join('data/inf_results', basefile), 'r') as store:
+                regressors = store.first_level.columns.levels[2]
+    
+    if exclude == 'trialregs':
+        exclude = ['intercept', 'entropy', 'response', 'trial_time']
+    elif exclude == 'dotregs':
+        exclude = ['abs_dot_x', 'abs_dot_y', 'accev', 'accev_cflip', 
+                   'accsur_pca', 'dot_x', 'dot_x_cflip', 'dot_y', 'move_dist',
+                   'sum_dot_y_prev']
+    if verbose:
+        print('excluding:')
+        print('\n'.join(exclude), end='\n\n')
+    
+    regressors = np.setdiff1d(regressors, exclude)
     
     values = np.array([], dtype=float)
     for r_name in regressors:
-        if r_name == 'intercept':
-            if verbose:
-                print('skipping intercept')
-            continue
-        
         if verbose:
             print('adding ' + r_name)
         
