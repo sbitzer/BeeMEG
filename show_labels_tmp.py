@@ -5,19 +5,25 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-r_name = 'dot_x'
-measure = 'mu_t'
+
+#%% set basefile and get threshold
+measure = 'mu_p_large'
 
 # baseline [-0.3, 0], trialregs_dot=5
-basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
+# basefile = 'source_HCPMMP1_allsubs_201703301614.h5'
+
 # baseline None, trialregs_dot=5
 #basefile = 'source_HCPMMP1_allsubs_201706091054.h5'
+
 # baseline (-0.3, 0), trialregs_dot=5, GLM in source space
 #basefile = 'source_sequential_201706141650.h5'
 
-srcfile = basefile[:-3] + '_slabs_%s.h5' % r_name
-file = 'mne_subjects/fsaverage/bem/' + srcfile
-src_df = pd.read_hdf(file, 'second_level_src')
+# baseline (-0.3, 0), trialregs_dot=5, GLM in source space, move_dist, sum_dot_y
+#basefile = 'source_sequential_201706191442.h5'
+
+# baseline (-0.3, 0), trialregs_dot=5, GLM in source space, move_dist, 
+# sum_dot_y, constregs=0 for 1st dot
+basefile = 'source_sequential_201706201654.h5'
 
 #brain = Brain('fsaverage', 'both', 'inflated', cortex='low_contrast',
 #              subjects_dir=sv.subjects_dir)
@@ -26,7 +32,16 @@ src_df = pd.read_hdf(file, 'second_level_src')
 #    regressors = store.first_level.columns.levels[2]
 regressors = None
 threshold = sv.find_slabs_threshold(basefile, measure, quantile=0.95, 
-                                    regressors=regressors, verbose=1)
+                                    regressors=regressors, exclude='trialregs',
+                                    verbose=1)
+#threshold = 0.5
+
+
+#%% load specific regressor
+r_name = 'dot_x'
+srcfile = basefile[:-3] + '_slabs_%s.h5' % r_name
+file = 'mne_subjects/fsaverage/bem/' + srcfile
+src_df = pd.read_hdf(file, 'second_level_src')
 
 #labels = sv.show_labels_as_data(src_df, measure, brain, transparent=True,
 #                                threshold=threshold, 
@@ -36,11 +51,11 @@ threshold = sv.find_slabs_threshold(basefile, measure, quantile=0.95,
 
 
 #%% show region time courses
-active = sv.get_significant_areas_in_region(src_df[measure], threshold, 3)
-#active = sv.get_significant_areas_in_time(src_df[measure], threshold, [250, 250])
+#active = sv.get_significant_areas_in_region(src_df[measure], threshold, 3)
+active = sv.get_significant_areas_in_time(src_df[measure], threshold, [100, 130])
 #active = sv.get_significant_regions(src_df[measure], threshold)
 
-sv.show_timecourses(active, [threshold, 8])
+sv.show_timecourses(active, [threshold, 1])
     
 plt.show()
 

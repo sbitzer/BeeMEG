@@ -212,7 +212,7 @@ good_trials = good_trials.reorder_levels(['subject', 'trial', 'dot']).sort_index
 permutation = np.arange(480 * times.size)
 
 for perm in np.arange(nperm+1):
-    print('permutation %d' % perm)
+    print('\npermutation %d' % perm)
     print('-------------')
     if perm > 0:
         # randomly permute trials, use different permutations for time points, but use
