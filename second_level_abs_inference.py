@@ -33,12 +33,18 @@ basefile = 'source_sequential_201706201654.h5'
 directory = 'mne_subjects/fsaverage/bem/'
 
 # regressors for which to infer across-subject strength
-r_names = ['dot_x', 'accev', 'dot_y', 'sum_dot_y_prev', 'move_dist', 'abs_dot_x', 'abs_dot_y', 'response', 'entropy',
-           'trial_time', 'intercept', 'accsur_pca', 'dot_x_cflip', 'accev_cflip']
+r_names = ['dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'accev', 'sum_dot_y_prev', 
+           'move_dist', 'response', 'entropy', 'trial_time', 'intercept', 
+           'accsur_pca', 'dot_x_cflip', 'accev_cflip']
 
 # threshold for "posterior probability of the existence of a medium sized 
 # effect", i.e., the probability that a sample from the posterior is > p_thresh
 p_thresh = 0.02
+
+# alpha-value defining the 'mu_testval' which is the alpha-quantile of the 
+# posterior distribution over mu, i.e., it's the value of mu for which 1-alpha
+# percent of values lie above it
+alpha = 0.05
 
 # chunksize: store results every CS iterations
 CS = 5000
@@ -47,7 +53,7 @@ CS = 5000
 #%% load data
 #first_level_src = pd.read_hdf(os.path.join(directory, basefile), 
 #                              'first_level_src')
-first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201706201654.h5.tmp',
+first_level_src = pd.read_hdf('data/inf_results/source_sequential_201706201654.h5',
                               'first_level')
 first_level_src = first_level_src.xs(0, level='permnr').xs('beta', level='measure', axis=1)
 
@@ -93,7 +99,7 @@ fit = pystan.stan(model_code=folded_normal_stan,
 
 
 #%% run inference across all data
-sl_cols = pd.Index(['mu_mean', 'mu_std', 'mu_t', 'mu_p_large', 
+sl_cols = pd.Index(['mu_mean', 'mu_std', 'mu_t', 'mu_testval', 'mu_p_large', 
                     'sigma_mean', 'sigma_std', 'theta_mean', 'theta_std', 
                     'lp_mean', 'lp_std', 'overlap', 'consistency'], 
                    name='measure')
@@ -105,7 +111,7 @@ for r_name in r_names:
     r_data = first_level_src.xs(r_name, axis=1, level='regressor')
     
     with pd.HDFStore(file, mode='w', complib='blosc', complevel=7) as store:
-        store['options'] = pd.Series({'p_thresh': p_thresh})
+        store['options'] = pd.Series({'p_thresh': p_thresh, 'alpha': alpha})
         
         for chunk in chunks:
             print('processing index %d to %d ...' % 
@@ -131,9 +137,11 @@ for r_name in r_names:
                 
                 second_level_src.ix[ind, 'mu_mean'] = samples['mu'].mean()
                 second_level_src.ix[ind, 'mu_std'] = samples['mu'].std()
-                second_level_src.ix[ind, 'mu_z'] = (
+                second_level_src.ix[ind, 'mu_t'] = (
                           second_level_src.ix[ind, 'mu_mean']
                         / second_level_src.ix[ind, 'mu_std'])
+                second_level_src.ix[ind, 'mu_testval'] = np.percentile(
+                        samples['mu'], alpha)
                 second_level_src.ix[ind, 'mu_p_large'] = np.mean(
                         samples['mu'] > p_thresh)
                 second_level_src.ix[ind, 'sigma_mean'] = samples['sigma'].mean()
@@ -145,7 +153,7 @@ for r_name in r_names:
                 second_level_src.ix[ind, 'overlap'] = (
                         scipy.stats.norm.logcdf(
                                 0, loc=second_level_src.ix[ind, 'mu_mean'], 
-                                scale=second_level_src.ix[ind, 'mu_std']))
+                                scale=second_level_src.ix[ind, 'sigma_mean']))
                 second_level_src.ix[ind, 'consistency'] = (
                         1 - np.mean(  (samples['theta'] > 0.25) 
                                     & (samples['theta'] < 0.75)))
