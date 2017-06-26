@@ -25,6 +25,7 @@ import pandas as pd
 import matplotlib
 import seaborn as sns
 import itertools
+from scipy.interpolate import interp1d
 
 if sys.version_info < (3,):
     from surfer import Brain
@@ -85,7 +86,13 @@ def null_inconsistent(values, v_threshold, s_threshold=3):
         start += length
     
     values = values.copy()
-    values[~mask] = 0
+    
+    # if the value threshold is below 0, then values were log-transformed
+    # so that 0 becomes -inf
+    if v_threshold < 0:
+        values[~mask] = -np.inf
+    else:
+        values[~mask] = 0
     
     return values
 
@@ -103,7 +110,7 @@ def null_inconsistent_measure(vseries, v_threshold, s_threshold=3):
 
 def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99, 
                          bemdir=bem_dir, regressors=None, 
-                         exclude='trialregs', verbose=2):
+                         exclude='trialregs', verbose=2, return_cdf=False):
     """Finds a value threshold for a measure corresponding to a given quantile.
     
         Pools values of the measure across all fitted regressors. Then finds 
@@ -151,10 +158,16 @@ def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99,
     if verbose > 1:
         ax.plot(qval*np.r_[1, 1], ax.get_ylim())
     
-    return qval
+    if return_cdf:
+        values.sort()
+        cdf = interp1d(values, np.arange(values.size) / values.size,
+                       assume_sorted=True)
+        return qval, cdf
+    else:
+        return qval
 
 
-def show_timecourses(tc_df, ylim, L=3):
+def show_timecourses(tc_df, ylim, L=3, logy=False):
     labels = tc_df.columns.get_level_values(1).unique()
     cols = matplotlib.cm.Paired(np.linspace(0, 1, 12))
     cols = cols[np.mod(np.arange(len(labels)), 12)]
@@ -165,12 +178,14 @@ def show_timecourses(tc_df, ylim, L=3):
         for line, name in zip(lines, df.columns[inds]):
             line.set_color(cols[name])
     
-    for hemi in ['L', 'R']:
+    for hemi in tc_df.columns.levels[0]:
         active = tc_df.loc[:, hemi]
         N = active.shape[1]
         
         if N > 0:
-            fig, axes = sns.plt.subplots(int(np.ceil(N/float(L))), 1, sharex=True)
+            fig, axes = sns.plt.subplots(int(np.ceil(N/float(L))), 1, 
+                                         sharex=True, 
+                                         figsize=[8, max(4, N / float(L) * 1.3)])
             
             try:
                 for i, ax in enumerate(axes):
@@ -178,6 +193,8 @@ def show_timecourses(tc_df, ylim, L=3):
                     active.iloc[:, inds].plot.line(ax=ax)
                     update_cols(ax, active, inds)
                     ax.set_ylim(*ylim)
+                    if logy:
+                        ax.set_yscale('log')
                     ax.legend(loc='best')
                 axes[0].set_title('hemisphere: ' + hemi)
                 
@@ -185,9 +202,32 @@ def show_timecourses(tc_df, ylim, L=3):
                 inds = slice(0, L)
                 active.iloc[:, inds].plot.line(ax=axes)
                 update_cols(axes, active, inds)
-                axes.legend(loc='best')
                 axes.set_ylim(*ylim)
+                if logy:
+                    axes.set_yscale('log')
+                axes.legend(loc='best')
                 axes.set_title('hemisphere: ' + hemi)
+
+
+def get_time_clusters(measure_series, threshold, cdf):
+    
+    clusters = []
+    
+    for label in measure_series.index.levels[0]:
+        label_tc = measure_series.xs(label, level='label')
+        
+        start = 0
+        for key, group in itertools.groupby(label_tc >= threshold):
+            length = sum(1 for _ in group)
+            if key == True:
+                logps = np.log10(1 - cdf(label_tc.values[start : start+length]))
+                clusters.append([label, label_tc.index[start], 
+                                 label_tc.index[start+length-1], logps.sum()])
+                
+            start += length
+    
+    return pd.DataFrame(clusters, 
+                        columns=['label', 'start_t', 'end_t', 'log10p'])
 
 
 def get_significant_areas_in_time(measure_series, threshold, timewindow):
