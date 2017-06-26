@@ -26,7 +26,7 @@ rt_thresh = 0.1
 
 # names of regressors that should enter the GLM
 r_names = ['abs_dot_x', 'abs_dot_y', 'dot_x', 'dot_y', 'entropy', 'trial_time', 
-           'intercept', 'response', 'dot_x_cflip']
+           'intercept', 'response']
 R = len(r_names)
 
 # source data to use
@@ -35,7 +35,7 @@ srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
 srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
 
 # How many permutations should be computed?
-nperm = 5
+nperm = 3
 
 # where to store
 file = pd.datetime.now().strftime('source_singledot'+'_%Y%m%d%H%M'+'.h5')
@@ -65,6 +65,10 @@ if 'RT' in r_names:
     DM = subject_DM.get_trial_DM(dots, r_names=r_names)
 else:
     DM = subject_DM.get_trial_DM(dots, r_names=r_names+['RT'])
+
+# move_dist_1 is constant at 0, we don't need to fit that
+if 'move_dist' in r_names:
+    del DM['move_dist_1']
     
 DM = DM.loc(axis=0)[subjects, :]
 
@@ -133,7 +137,7 @@ assert np.all(second_level.columns.levels[1] == DM.columns), 'order of ' \
 permutation = np.arange(480 * times.size)
 
 for perm in np.arange(nperm+1):
-    print('permutation %d' % perm)
+    print('\npermutation %d' % perm)
     print('-------------')
     if perm > 0:
         # randomly permute trials, use different permutations for time points, but use
@@ -146,12 +150,11 @@ for perm in np.arange(nperm+1):
     
     with pd.HDFStore(srcfile, 'r') as store:
         for s, sub in enumerate(subjects):
-            print('sub = %d' % sub)
             epochs = store.select('label_tc', 'subject=sub')
             epochs.loc[:] = epochs.values[permutation.flatten(), :]
             
             for t0 in times:
-                print('t0 = %d' % t0)
+                print('\rsubject = %2d, t0 = %3d' % (sub, t0), end='')
         
                 data = epochs.loc[(sub, slice(None), t0)]
                 data = data.loc[good_trials.loc[sub].values]
@@ -172,7 +175,7 @@ for perm in np.arange(nperm+1):
                     first_level_diagnostics.loc[(perm, label, t0), (sub, 'llf')] = (
                         res.llf)
     
-    print('computing second level ...') 
+    print('\ncomputing second level ...') 
     for label in srclabels:
         for t0 in times:
             params = first_level.loc[(perm, label, t0), 
