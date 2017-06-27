@@ -11,6 +11,7 @@ import pandas as pd
 import pystan
 import os
 import scipy.stats
+import time
 
 
 #%% options
@@ -23,20 +24,31 @@ import scipy.stats
 # baseline None, trialregs_dot=5
 #basefile = 'source_HCPMMP1_allsubs_201706091054.h5'
 
-# baseline (-0.3, 0), trialregs_dot=5, GLM in source space, move_dist, sum_dot_y
+# baseline (-0.3, 0), trialregs_dot=5, source GLM, move_dist, sum_dot_y
 #basefile = 'source_sequential_201706191442.h5'
 
-# baseline (-0.3, 0), trialregs_dot=5, GLM in source space, move_dist, 
+# baseline (-0.3, 0), trialregs_dot=5, source GLM, move_dist, 
 # sum_dot_y, constregs=0 for 1st dot
-basefile = 'source_sequential_201706201654.h5'
+#basefile = 'source_sequential_201706201654.h5'
+
+# baseline (-0.3, 0), source GLM, only basic regressors
+#basefile = 'source_singledot_201706221206.h5'
+
+# baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, source GLM, move_dist, 
+# sum_dot_y, constregs=0 for 1st dot
+basefile = 'source_sequential_201706261151.h5'
 
 directory = 'mne_subjects/fsaverage/bem/'
 
 # regressors for which to infer across-subject strength
-r_names = ['dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'accev', 'sum_dot_y_prev', 
-           'move_dist', 'response', 'entropy', 'trial_time', 'intercept', 
-           'accsur_pca', 'dot_x_cflip', 'accev_cflip']
-
+if basefile.startswith('source_seq'):
+    r_names = ['move_dist', 
+               'accev', 'sum_dot_y_prev', 'response', 'entropy', 'trial_time', 
+               'intercept', 'accsur_pca', 'dot_x_cflip', 'accev_cflip']
+else:
+    r_names = ['dot_x', 'dot_y', 'response', 'abs_dot_x', 'abs_dot_y', 'entropy', 
+               'trial_time', 'intercept']
+    
 # threshold for "posterior probability of the existence of a medium sized 
 # effect", i.e., the probability that a sample from the posterior is > p_thresh
 p_thresh = 0.02
@@ -53,8 +65,16 @@ CS = 5000
 #%% load data
 #first_level_src = pd.read_hdf(os.path.join(directory, basefile), 
 #                              'first_level_src')
-first_level_src = pd.read_hdf('data/inf_results/source_sequential_201706201654.h5',
-                              'first_level')
+nofile = True
+while nofile:
+    try:
+        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201706261151.h5.tmp',
+                                      'first_level')
+        nofile = False
+    except FileNotFoundError:
+        print('waiting for 5 min ...')
+        time.sleep(5*60)
+        
 first_level_src = first_level_src.xs(0, level='permnr').xs('beta', level='measure', axis=1)
 
 N = first_level_src.shape[0]

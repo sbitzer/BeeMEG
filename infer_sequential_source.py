@@ -18,7 +18,7 @@ from warnings import warn
 
 #%% options
 # which dot to investigate?
-dots = np.arange(1, 6)
+dots = np.arange(1, 4)
 
 # implements the assumption that in a trial with RT<(dot onset time + rt_thresh)
 # there cannot be an effect of the last considered dot in the MEG signal
@@ -39,7 +39,8 @@ R = len(r_names)
 # 5th dot
 # if trialregs_dot = 0, all the data from the dot sequence is used and you 
 # essentially look for the average effect across the considered dot sequence
-trialregs_dot = 5
+# if trialregs_dot = -1 you use the last considered dot
+trialregs_dot = -1
 
 # source data to use
 srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
@@ -47,7 +48,7 @@ srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
 srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
 
 # How many permutations should be computed?
-nperm = 5
+nperm = 3
 
 # where to store
 file = pd.datetime.now().strftime('source_sequential'+'_%Y%m%d%H%M'+'.h5')
@@ -157,6 +158,8 @@ DM[otherregs] = (DM[otherregs] - DM[otherregs].mean()) / DM[otherregs].std()
 
 # set trial regressors to 0 for all except the chosen dot
 if trialregs_dot:
+    if trialregs_dot < 0:
+        trialregs_dot = dots[trialregs_dot]
     DM.loc[(slice(None), slice(None), np.setdiff1d(dots, trialregs_dot)), 
            list(np.setdiff1d(trialregs, 'intercept'))] = 0
 
