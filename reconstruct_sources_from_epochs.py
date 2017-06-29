@@ -49,7 +49,7 @@ inv_depth = 0.8
 
 parc = 'HCPMMP1'
 
-label_mode = 'mean_flip'
+label_mode = 'max'
 
 options = pd.Series({'chtype': chtype, 'sfreq': sfreq, 'hfreq': hfreq, 
                      'method': method, 'fwd_surf_ori': fwd_surf_ori,

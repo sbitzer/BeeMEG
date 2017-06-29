@@ -36,13 +36,17 @@ import time
 
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, source GLM, move_dist, 
 # sum_dot_y, constregs=0 for 1st dot
-basefile = 'source_sequential_201706261151.h5'
+#basefile = 'source_sequential_201706261151.h5'
+
+# label mode = (abs) max, baseline (-0.3, 0), only first 3 dots, 
+# trialregs_dot=3, source GLM, move_dist, sum_dot_y, constregs=0 for 1st dot
+basefile = 'source_sequential_201706281100.h5'
 
 directory = 'mne_subjects/fsaverage/bem/'
 
 # regressors for which to infer across-subject strength
 if basefile.startswith('source_seq'):
-    r_names = ['move_dist', 
+    r_names = ['dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'move_dist', 
                'accev', 'sum_dot_y_prev', 'response', 'entropy', 'trial_time', 
                'intercept', 'accsur_pca', 'dot_x_cflip', 'accev_cflip']
 else:
@@ -68,7 +72,7 @@ CS = 5000
 nofile = True
 while nofile:
     try:
-        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201706261151.h5.tmp',
+        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201706281100.h5.tmp',
                                       'first_level')
         nofile = False
     except FileNotFoundError:

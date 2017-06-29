@@ -43,7 +43,10 @@ R = len(r_names)
 trialregs_dot = -1
 
 # source data to use
-srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
+# label mode = mean_flip
+#srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
+# label mode = (abs) max
+srcfile = 'source_epochs_allsubs_HCPMMP1_201706271717.h5'
 
 srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
 
