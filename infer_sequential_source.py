@@ -44,14 +44,18 @@ trialregs_dot = -1
 
 # source data to use
 # label mode = mean_flip
-#srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
+srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
 # label mode = (abs) max
-srcfile = 'source_epochs_allsubs_HCPMMP1_201706271717.h5'
+#srcfile = 'source_epochs_allsubs_HCPMMP1_201706271717.h5'
 
 srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
 
 # How many permutations should be computed?
 nperm = 3
+
+# whether to normalise the source signal to have mean 0 and std 1 in each area
+# across trials, time points and subjects
+normsrc = True
 
 # where to store
 file = pd.datetime.now().strftime('source_sequential'+'_%Y%m%d%H%M'+'.h5')
@@ -61,8 +65,8 @@ file = os.path.join(helpers.resultsdir, file)
 
 # create HDF5-file and save chosen options
 with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
-    store['scalar_params'] = pd.Series([rt_thresh, trialregs_dot], 
-         ['rt_thresh', 'trialregs_dot'])
+    store['scalar_params'] = pd.Series([rt_thresh, trialregs_dot, normsrc], 
+         ['rt_thresh', 'trialregs_dot', 'normsrc'])
     store['dots'] = pd.Series(dots)
     store['srcfile'] = pd.Series(srcfile)
 
@@ -232,6 +236,11 @@ for perm in np.arange(nperm+1):
     with pd.HDFStore(srcfile, 'r') as store:
         for s, sub in enumerate(subjects):
             epochs = store.select('label_tc', 'subject=sub')
+            
+            # normalise each label across time points and subjects
+            if normsrc:
+                epochs = (epochs - epochs_mean) / epochs_std
+            
             epochs.loc[:] = epochs.values[permutation.flatten(), :]
             
             for t0 in times[:tendi+1]:
