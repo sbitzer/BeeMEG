@@ -13,11 +13,12 @@ import subject_DM
 from scipy.stats import ttest_1samp
 import os
 import statsmodels.api as sm
+from warnings import warn
 
 
 #%% options
 # which dot to investigate?
-dots = np.arange(1, 6)
+dots = np.arange(1, 4)
 
 # implements the assumption that in a trial with RT<(dot onset time + rt_thresh)
 # there cannot be an effect of the last considered dot in the MEG signal
@@ -26,7 +27,7 @@ rt_thresh = 0.1
 # names of regressors that should enter the GLM
 r_names = ['abs_dot_y', 'abs_dot_x', 'dot_y', 'dot_x', 'entropy', 'trial_time', 
            'intercept', 'accev', 'accsur_pca', 'response', 'dot_x_cflip', 
-           'accev_cflip']
+           'accev_cflip', 'move_dist', 'sum_dot_y_prev']
 R = len(r_names)
 
 # do not look for 100 ms spaced equal effects for trial regressors, instead 
@@ -38,10 +39,11 @@ R = len(r_names)
 # 5th dot
 # if trialregs_dot = 0, all the data from the dot sequence is used and you 
 # essentially look for the average effect across the considered dot sequence
-trialregs_dot = 0
+# if trialregs_dot = -1 you use the last considered dot
+trialregs_dot = -1
 
 # baseline period (set to None for no baseline correction)
-bl = None
+bl = (-0.3, 0)
 
 # desired sampling frequency of data
 sfreq = 100
@@ -54,14 +56,16 @@ hfreq = sfreq
 window = [0, 0.9]
 
 # How many permutations should be computed?
-nperm = 5
+nperm = 3
 
 # where to store
-file = os.path.join(helpers.resultsdir, 
-        pd.datetime.now().strftime('meg_sequential'+'_%Y%m%d%H%M'+'.h5'))
+file = pd.datetime.now().strftime('meg_sequential'+'_%Y%m%d%H%M'+'.h5')
+# tmp-file should use local directory (preventing issue with remote store)
+tmpfile = os.path.join('/media/bitzer/Data', file+'.tmp')
+file = os.path.join(helpers.resultsdir, file)
 
 # create HDF5-file and save chosen options
-with pd.HDFStore(file, mode='w', complevel=7, complib='zlib') as store:
+with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
     store['scalar_params'] = pd.Series([rt_thresh, trialregs_dot, sfreq, hfreq], 
          ['rt_thresh', 'trialregs_dot', 'sfreq', 'hfreq'])
     store['dots'] = pd.Series(dots)
@@ -121,11 +125,11 @@ dotregs = []
 for col in DM.columns:
     if col[-2:] == '_%d' % dots[0]:
         dotregs.append(col[:-2])
-otherregs = list(np.setdiff1d(r_names, dotregs))
+trialregs = list(np.setdiff1d(r_names, dotregs))
         
 def get_dot_DM(DM, dot):
     rn = list(map(lambda s: s+'_%d' % dot, dotregs))
-    DMdot = DM[otherregs + rn]
+    DMdot = DM[trialregs + rn]
     return DMdot.rename(columns=dict(zip(rn, dotregs)))
 
 DM = pd.concat([get_dot_DM(DM, dot) for dot in dots], keys=dots, 
@@ -134,23 +138,45 @@ DM = DM.reorder_levels(['subject', 'trial', 'dot']).sort_index()
 DM.sort_index(axis=1, inplace=True)
 
 
-#%% normalise data and regressors to simplify definition of priors
-DM = (DM - DM.mean()) / DM.std()
-# intercept will be nan, because it has no variance
-DM['intercept'] = 1
+#%% normalise data and regressors to simplify interpretation
+# find regressors that have constant value for the first dot
+dmstds = DM.loc[(subjects[0], slice(None), 1)].std()
+constregs = dmstds[np.isclose(dmstds, 0)].index
+# don't care about intercept
+constregs = constregs[constregs != 'intercept']
+
+# only dot-level regressor should be constant for the first dot, 
+# otherwise something's wrong
+assert np.setdiff1d(constregs, dotregs).size == 0
+
+otherregs = np.setdiff1d(r_names, list(constregs)+['intercept'])
+
+# for constregs I need to exclude first dot data from normalisation
+DM2const = DM.loc[(slice(None), slice(None), slice(2, dots[-1])), constregs]
+DM[constregs] = (DM[constregs] - DM2const.mean()) / DM2const.std()
+del DM2const
+
+# then set first dot values of constregs to 0 to exclude that they have any
+# influence on the estimation of the regressor betas
+DM.loc[(slice(None), slice(None), 1), constregs] = 0
+
+# other regressors can be normalised in the standard way
+DM[otherregs] = (DM[otherregs] - DM[otherregs].mean()) / DM[otherregs].std()
 
 # set trial regressors to 0 for all except the chosen dot
 if trialregs_dot:
+    if trialregs_dot < 0:
+        trialregs_dot = dots[trialregs_dot]
     DM.loc[(slice(None), slice(None), np.setdiff1d(dots, trialregs_dot)), 
-           list(np.setdiff1d(otherregs, 'intercept'))] = 0
+           list(np.setdiff1d(trialregs, 'intercept'))] = 0
 
 # this will include bad trials, too, but it shouldn't matter as this 
 # normalisation across subjects, trials and time points is anyway very rough
 # do this in two steps to save some memory
-with pd.HDFStore(file, mode='r+', complevel=7, complib='zlib') as store:
+with pd.HDFStore(file, mode='r+', complevel=7, complib='blosc') as store:
     store['epochs_mean'] = epochs_all.mean()
 epochs_all = epochs_all - epochs_all.mean()
-with pd.HDFStore(file, mode='r+', complevel=7, complib='zlib') as store:
+with pd.HDFStore(file, mode='r+', complevel=7, complib='blosc') as store:
     store['epochs_std'] = epochs_all.std()
 epochs_all = epochs_all / epochs_all.std()
 
@@ -197,7 +223,8 @@ good_trials = pd.concat([good_trials for d in dots], keys=dots,
 good_trials = good_trials.reorder_levels(['subject', 'trial', 'dot']).sort_index()
 
 for perm in np.arange(nperm+1):
-    print('permutation %d' % perm)
+    print('\npermutation %d' % perm)
+    print('-------------')
     if perm > 0:
         # randomly permute trials, use different permutations for time points, but use
         # the same permutation across all subjects such that only trials are permuted,
@@ -209,11 +236,11 @@ for perm in np.arange(nperm+1):
         epochs_all.loc[:] = epochs_all.values[permutation.flatten(), :]
         
     for t0 in times[:tendi+1]:
-        print('t0 = %d' % t0)
-        
         datat = get_data_times(t0)
         
-        for channel in epochs_all.columns:
+        for c, channel in enumerate(epochs_all.columns):
+            print('\rt0 = %3d, channel = %3d' % (t0, c), end='')
+            
             data = epochs_all.loc[(slice(None), slice(None), datat), channel]
             data = data.loc[good_trials.values]
                 
@@ -242,19 +269,24 @@ for perm in np.arange(nperm+1):
             _, pvals = ttest_1samp(params, 0, axis=0)
             second_level.loc[(perm, channel, t0), ('mlog10p', slice(None))] = (
                     -np.log10(pvals))
-            
+    
+    print('\nsaving ... ', end='')
     try:
-        with pd.HDFStore(file+'.tmp', mode='w') as store:
+        with pd.HDFStore(tmpfile, mode='w') as store:
             store['second_level'] = second_level
             store['first_level'] = first_level
             store['first_level_diagnostics'] = first_level_diagnostics
+        print('done.')
     except:
-        pass
+        print('skipped.')
+    
         
-if os.path.isfile(file+'.tmp'):
-    os.remove(file+'.tmp')
-
-with pd.HDFStore(file, mode='r+', complevel=7, complib='zlib') as store:
-    store['second_level'] = second_level
-    store['first_level'] = first_level
-    store['first_level_diagnostics'] = first_level_diagnostics
+try:
+    with pd.HDFStore(file, mode='r+', complevel=7, complib='blosc') as store:
+        store['second_level'] = second_level
+        store['first_level'] = first_level
+        store['first_level_diagnostics'] = first_level_diagnostics
+except:
+    warn('Results not saved yet!')
+else:
+    os.remove(tmpfile)
