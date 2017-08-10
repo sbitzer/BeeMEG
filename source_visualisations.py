@@ -24,8 +24,7 @@ import glob
 import pandas as pd
 import matplotlib
 import seaborn as sns
-import itertools
-from scipy.interpolate import interp1d
+import source_statistics as ss
 
 if sys.version_info < (3,):
     from surfer import Brain
@@ -48,6 +47,10 @@ view = {'lh': {'azimuth': -55.936889415680255,
 Glasser_sections = pd.read_csv('Glasser2016_sections.csv', index_col=0)
 Glasser_areas = pd.read_csv('Glasser2016_areas.csv', index_col=0)
 
+measure_basevals = {'mu_mean': 0, 'mu_std': np.inf, 'mu_t': 0, 'mu_testval': 0,
+                    'mu_p_large': 0, 'sigma_mean': np.inf, 'sigma_std': np.inf,
+                    'theta_mean': 0.5, 'theta_std': np.inf, 'lp_mean': 0,
+                    'lp_std': np.inf, 'overlap': 0, 'consistency': 0.5}
 
 def set_regions(vseries, aggfun=lambda a: np.max(a, axis=0)):
     """Set all vertices belonging to a Glasser region/section to one value.
@@ -71,100 +74,6 @@ def set_regions(vseries, aggfun=lambda a: np.max(a, axis=0)):
                     aggfun(values).values, len(labels))
             
     return vseries
-
-
-def null_inconsistent(values, v_threshold, s_threshold=3):
-    """Sets all values to 0 that do not belong to a sequence of length 
-    s_threshold of values above v_threshold."""
-    mask = np.zeros_like(values, dtype=bool)
-    
-    start = 0
-    for key, group in itertools.groupby(values >= v_threshold):
-        length = sum(1 for _ in group)
-        if key == True and length >= s_threshold:
-            mask[start : start+length] = True
-        start += length
-    
-    values = values.copy()
-    
-    # if the value threshold is below 0, then values were log-transformed
-    # so that 0 becomes -inf
-    if v_threshold < 0:
-        values[~mask] = -np.inf
-    else:
-        values[~mask] = 0
-    
-    return values
-
-def null_inconsistent_measure(vseries, v_threshold, s_threshold=3):
-    """Applies null_inconsistent to all labels in the series, but not across 
-    labels."""
-    vseries = vseries.reset_index(level='label')
-    vdf = vseries.pivot(columns='label')
-    
-    vdf = vdf.apply(lambda x: null_inconsistent(x, v_threshold, s_threshold))
-    vdf = vdf.stack().reorder_levels(['label', 'time']).sort_index()
-    
-    return vdf[vdf.columns[0]]
-
-
-def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99, 
-                         bemdir=bem_dir, regressors=None, 
-                         exclude='trialregs', verbose=2, return_cdf=False):
-    """Finds a value threshold for a measure corresponding to a given quantile.
-    
-        Pools values of the measure across all fitted regressors. Then finds 
-        the value corresponding to the given quantile.
-    """
-    
-    if regressors is None:
-        try:
-            with pd.HDFStore(os.path.join(bemdir, basefile), 'r') as store:
-                regressors = store.first_level_src.columns.levels[1]
-        except (FileNotFoundError, OSError):
-            with pd.HDFStore(os.path.join('data/inf_results', basefile), 'r') as store:
-                regressors = store.first_level.columns.levels[2]
-    
-    if exclude == 'trialregs':
-        exclude = ['intercept', 'entropy', 'response', 'trial_time']
-    elif exclude == 'dotregs':
-        exclude = ['abs_dot_x', 'abs_dot_y', 'accev', 'accev_cflip', 
-                   'accsur_pca', 'dot_x', 'dot_x_cflip', 'dot_y', 'move_dist',
-                   'sum_dot_y_prev']
-    if verbose:
-        print('excluding:')
-        print('\n'.join(exclude), end='\n\n')
-    
-    regressors = np.setdiff1d(regressors, exclude)
-    
-    values = np.array([], dtype=float)
-    for r_name in regressors:
-        if verbose:
-            print('adding ' + r_name)
-        
-        fname = basefile[:-3] + '_slabs_' + r_name + '.h5'
-        
-        with pd.HDFStore(os.path.join(bemdir, fname), 'r') as store:
-            values = np.r_[values, store.second_level_src[measure].values]
-    
-    if verbose:
-        print('N = %d' % values.size)
-    if verbose > 1:
-        fig, ax = sns.plt.subplots()
-        ax = sns.distplot(values, ax=ax)
-    
-    qval = np.percentile(values, quantile * 100)
-    
-    if verbose > 1:
-        ax.plot(qval*np.r_[1, 1], ax.get_ylim())
-    
-    if return_cdf:
-        values.sort()
-        cdf = interp1d(values, np.arange(values.size) / values.size,
-                       assume_sorted=True)
-        return qval, cdf
-    else:
-        return qval
 
 
 def show_timecourses(tc_df, ylim, L=3, logy=False):
@@ -207,104 +116,6 @@ def show_timecourses(tc_df, ylim, L=3, logy=False):
                     axes.set_yscale('log')
                 axes.legend(loc='best')
                 axes.set_title('hemisphere: ' + hemi)
-
-
-def get_time_clusters(measure_series, threshold, cdf):
-    
-    clusters = []
-    
-    for label in measure_series.index.levels[0]:
-        label_tc = measure_series.xs(label, level='label')
-        
-        start = 0
-        for key, group in itertools.groupby(label_tc >= threshold):
-            length = sum(1 for _ in group)
-            if key == True:
-                logps = np.log10(1 - cdf(label_tc.values[start : start+length]))
-                clusters.append([label, label_tc.index[start], 
-                                 label_tc.index[start+length-1], logps.sum()])
-                
-            start += length
-    
-    return pd.DataFrame(clusters, 
-                        columns=['label', 'start_t', 'end_t', 'log10p'])
-
-
-def get_significant_areas_in_time(measure_series, threshold, timewindow):
-    values = null_inconsistent_measure(measure_series, threshold)
-    values_tmp = values.loc[(slice(None), slice(*timewindow))]
-    values_tmp = values_tmp.reset_index(level='label').pivot(columns='label')
-    labels = values_tmp.columns.get_level_values('label')[values_tmp.sum() > 0]
-    del values_tmp
-    
-    areas = pd.Series(np.unique(labels.map(lambda l: l[2:-7])))
-    
-    area_values = pd.DataFrame(
-            [], dtype=float, index=values.index.levels[1], columns=
-            pd.MultiIndex.from_product([['L', 'R'], areas], 
-                                       names = ['hemi', 'region']))
-
-    for hemi in ['l', 'r']:
-        # create full label names
-        labels = areas.map(
-                lambda s: '%s_%s_ROI-%sh' % (hemi.upper(), s, hemi))
-        
-        # set values of all areas to that of aggregated value
-        avals = values.loc[(labels, slice(None))]
-        avals = avals.reset_index(level='time').pivot(columns='time')
-        area_values.loc[:, (hemi.upper(), slice(None))] = avals.values.T
-
-    return area_values.drop(area_values.columns[area_values.sum() == 0], axis=1)
-
-
-def get_significant_areas_in_region(measure_series, threshold, region):
-    areas = Glasser_areas[Glasser_areas['main section'] == region]
-    areas = areas.sort_values('area name')
-    
-    values = null_inconsistent_measure(measure_series, threshold)
-    
-    area_values = pd.DataFrame(
-            [], dtype=float, index=values.index.levels[1], columns=
-            pd.MultiIndex.from_product([['L', 'R'], areas['area name']], 
-                                       names = ['hemi', 'region']))
-
-    for hemi in ['l', 'r']:
-        # create full label names
-        labels = areas['area name'].map(
-                lambda s: '%s_%s_ROI-%sh' % (hemi.upper(), s, hemi))
-        
-        # set values of all areas to that of aggregated value
-        avals = values.loc[(labels, slice(None))]
-        avals = avals.reset_index(level='time').pivot(columns='time')
-        area_values.loc[:, (hemi.upper(), slice(None))] = avals.values.T
-
-    return area_values.drop(area_values.columns[area_values.sum() == 0], axis=1)
-
-
-def get_significant_regions(measure_series, threshold, 
-                            region_aggfun=lambda a: np.max(a, axis=0)):
-    values = null_inconsistent_measure(measure_series, threshold)
-    
-    regions = pd.DataFrame(
-            [], dtype=float, index=values.index.levels[1], columns=
-            pd.MultiIndex.from_product([['L', 'R'], Glasser_sections.name], 
-                                       names = ['hemi', 'region']))
-    for section in Glasser_sections.index:
-        # find all areas in region
-        areas = Glasser_areas[Glasser_areas['main section'] == section]
-        
-        for hemi in ['l', 'r']:
-            # create full label names
-            labels = areas['area name'].map(
-                    lambda s: '%s_%s_ROI-%sh' % (hemi.upper(), s, hemi))
-            
-            # set values of all areas to that of aggregated value
-            avals = values.loc[(labels, slice(None))]
-            avals = avals.reset_index(level='time').pivot(columns='time')
-            regions.loc[:, (hemi.upper(), Glasser_sections.loc[section, 'name'])] = (
-                    region_aggfun(avals).values)
-    
-    return regions.drop(regions.columns[regions.sum() == 0], axis=1)
 
 
 def load_source_estimate(r_name='dot_x', f_pattern=''):
@@ -404,11 +215,19 @@ if sys.version_info < (3,):
             src_df = pd.read_hdf(file, 'second_level_src')
         
         T = src_df.index.levels[1].size
-        values = src_df[measure]
+        values = src_df[measure].copy()
         
-        # remove 'insignificant' data
-        if threshold > 0:
-            values = null_inconsistent_measure(values, threshold)
+        # is src_df masked using nans to indicate insignificant data?
+        nan_masked = values.isnull().any()
+        
+        # remove 'insignificant' data, if not done already with a nan mask
+        if threshold > 0 and not nan_masked:
+            values = ss.null_inconsistent_measure(values, threshold)
+        
+        # replace nans with base values for that measure
+        if nan_masked:
+            values = values.fillna(measure_basevals[measure])
+            
         # aggregate areas into regions
         if region_aggfun is not None:
             values = set_regions(values, region_aggfun)
@@ -427,7 +246,7 @@ if sys.version_info < (3,):
     
         # use MNE color stuff
         ctrl_pts, colormap = mne.viz._3d._limits_to_control_points(
-                clim, src_df[measure], colormap)
+                clim, values, colormap)
         if colormap in ('mne', 'mne_analyze'):
             colormap = mne.viz.utils.mne_analyze_colormap(ctrl_pts)
             scale_pts = [-1 * ctrl_pts[-1], 0, ctrl_pts[-1]]
@@ -436,7 +255,12 @@ if sys.version_info < (3,):
             scale_pts = ctrl_pts
             transparent = True if transparent is None else transparent
     
-        for hemi in ['lh', 'rh']:
+        if values.index.levels[1].max() > 100:
+            time_label_fun = lambda x: '%4d ms' % x
+        else:
+            time_label_fun = lambda x: '%4d ms' % (x * 1000)
+    
+        for hemi in brain.geo.keys():
             # create data from source estimates
             V = brain.geo[hemi].x.size
             data = np.zeros((V, T))
@@ -445,7 +269,7 @@ if sys.version_info < (3,):
             
             # plot
             brain.add_data(data, time=src_df.index.levels[1].values, 
-                           time_label=lambda x: '%4d ms' % (x * 1000),
+                           time_label=time_label_fun,
                            colormap=colormap, colorbar=colorbar, hemi=hemi, 
                            remove_existing=True)
             
