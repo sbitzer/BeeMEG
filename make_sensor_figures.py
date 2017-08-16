@@ -373,3 +373,53 @@ fig.subplots_adjust(left=0.1, bottom=0.17, right=0.97, top=0.91, wspace=0.3)
 
 fig.savefig(os.path.join(figdir, 'response_av_mu_mean_source_exmp_area.png'), 
             dpi=300)
+
+
+#%% early effects in V1/V2 source dipoles / points
+
+# GLM on source points of V1 and V2
+# baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, source GLM, move_dist, 
+# sum_dot_y, constregs=0 for 1st dot, 
+# label_tc normalised across trials, times and subjects
+basefile = 'source_sequential_201708151458.h5'
+
+regressors = ['dot_x', 'dot_y']
+
+second_level = pd.concat([ss.load_src_df(basefile, reg) for reg in regressors],
+                         axis=1, keys=regressors, names=['regressor', 'measure'])
+second_level = second_level.swaplevel(axis=1).sort_index(axis=1)
+
+# restrict to V1 or V2 only
+#second_level = second_level.loc[
+#        ([n for n in filter(lambda n: 'V2' in n, second_level.index.levels[0])], 
+#         slice(None))]
+
+fig, axes = plt.subplots(1, 2, sharex=True, sharey=False, figsize=[7.5, 3])
+
+# average posterior mu
+values = pd.concat(
+        [second_level.loc[:, ('mu_mean', 'dot_x')].mean(level='time'),
+         second_level.loc[:, ('mu_mean', 'dot_y')].mean(level='time')], axis=1)
+
+ax = axes[0]
+ax.plot(values.index, values.values[:, 0], label='x-coordinate')
+ax.plot(values.index, values.values[:, 1], label='y-coordinate')
+ax.set_xlabel('time from dot onset (ms)')
+ax.set_ylabel('posterior mu')
+ax.set_title('average', fontdict={'fontsize': 12})
+ax.legend(loc='upper left')
+
+# dot_y
+values = pd.concat(
+        [second_level.loc[:, ('mu_mean', 'dot_x')].max(level='time'),
+         second_level.loc[:, ('mu_mean', 'dot_y')].max(level='time')], axis=1)
+
+ax = axes[1]
+ax.plot(values.index, values)
+ax.set_xlabel('time from dot onset (ms)')
+ax.set_title('maximum', fontdict={'fontsize': 12})
+
+fig.subplots_adjust(left=0.1, bottom=0.18, right=0.97)
+
+fig.savefig(os.path.join(figdir, 'av_mu_mean_source_V1V2.png'), 
+            dpi=300)
