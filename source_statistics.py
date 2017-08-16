@@ -133,7 +133,10 @@ def get_fdrcorr_clusters(basefile, regressors, measure, threshold, cdf,
     clusters['pval_corrected'] = pval
     clusters = clusters[reject]
     
-    clusters['region'] = clusters.label.apply(get_Glasser_section)
+    try:
+        clusters['region'] = clusters.label.apply(get_Glasser_section)
+    except IndexError:
+        print('No brain regions found for area, skipping that step.')
     
     return clusters
     
