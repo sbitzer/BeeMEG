@@ -25,7 +25,7 @@ sfreq = 100
 hfreq = sfreq
 
 # time window within an epoch to consider
-window = [0, 0.9]
+window = [0, 0.4]
 
 # chtype=True for all MEG-channels, chtype='mag' for magnetometers
 chtype = True
@@ -47,9 +47,17 @@ else:
     
 inv_depth = 0.8
 
+# parcellation on which labels are based
 parc = 'HCPMMP1'
 
-label_mode = 'max'
+# specific labels that should be stored, all others are discarded,
+# use empty list to indicate that all labels should be stored
+lselection = ['L_V1_ROI-lh', 'L_V2_ROI-lh',
+              'R_V1_ROI-rh', 'R_V2_ROI-rh']
+
+# set to None to keep original source points, 
+# otherwise see MNE's extract_label_time_course for available modes
+label_mode = None
 
 options = pd.Series({'chtype': chtype, 'sfreq': sfreq, 'hfreq': hfreq, 
                      'method': method, 'fwd_surf_ori': fwd_surf_ori,
@@ -66,6 +74,7 @@ with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
     store['options'] = options
     store['bl'] = pd.Series(bl)
     store['window'] = pd.Series(window)
+    store['lselection'] = pd.Series(lselection)
 
 
 #%% run source reconstruction separately for each subject
@@ -73,13 +82,15 @@ with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
 subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
 
 labels = mne.read_labels_from_annot('fsaverage', parc=parc, hemi='both')
+if lselection:
+    labels = [l for l in labels if l.name in lselection]
 labelnames = [l.name for l in labels]
 
 trials = np.arange(480) + 1
 
 fresh = True
 for sub in subjects:
-    print('processing subject %2d' % sub)
+    print('\nprocessing subject %2d' % sub)
     print('----------------------')
     
     # bem directory of this subject
@@ -131,27 +142,73 @@ for sub in subjects:
     
     # initialise time course store, because we didn't know times before
     times = (epochs.times * 1000).round().astype(int)
-    label_tc = pd.DataFrame([], 
-                            columns=pd.Index(labelnames, name='label'), 
-                            index=pd.MultiIndex.from_product(
-                                    [[sub], trials, times], 
-                                    names=['subject', 'trial', 'time']), 
-                            dtype=float)
-
+    
     # compute!
     stcs = mne.minimum_norm.apply_inverse_epochs(
             epochs, inverse_operator, lambda2, method=method, pick_ori=None)
     
     labels = mne.read_labels_from_annot(subject, parc=parc, hemi='both')
+    if lselection:
+        labels = [l for l in labels if l.name in lselection]
     
+    # this number of vertices may be misleading, because it is independent of 
+    # the defined source space which may have a much wider mesh, the actually
+    # used number of source points per label would be len(vertno) below
     label_nv = pd.DataFrame(np.array([len(l) for l in labels])[None, :], 
-                            index=pd.Index([sub], name='subject'), 
-                            columns=labelnames, dtype=int)
+                                index=pd.Index([sub], name='subject'), 
+                                columns=labelnames, dtype=int)
     
-    for trial, stc in zip(trials, stcs):
-        label_tc.loc[(sub, trial, slice(None)), :] = (
-                stc.extract_label_time_course(
-                        labels, fwd['src'], mode=label_mode).T)
+    # select source points (vertices), if no aggregation within labels
+    if label_mode is None:
+        point_tcs = []
+        for label in labels:
+            # this is only used to extract label vertices in source space
+            stc = stcs[0]
+            
+            # select those vertices that are both in the label and the 
+            # source space
+            if label.hemi == 'lh':
+                vertno = np.intersect1d(stc.lh_vertno, label.vertices)
+                vertidx = np.searchsorted(stc.lh_vertno, vertno)
+            elif label.hemi == 'rh':
+                vertno = np.intersect1d(stc.rh_vertno, label.vertices)
+                vertidx = (  stc.lh_vertno.size 
+                           + np.searchsorted(stc.rh_vertno, vertno))
+            else:
+                raise ValueError('label %s has invalid hemi' % label.name)
+            
+            # create result data frame with vertex numbers in label names
+            lnames = [label.name + '_%06d' % vno for vno in vertno]
+            point_tc = pd.DataFrame([], 
+                                    columns=pd.Index(lnames, name='label'), 
+                                    index=pd.MultiIndex.from_product(
+                                            [[sub], trials, times], 
+                                            names=['subject', 'trial', 'time']), 
+                                    dtype=float)
+            
+            # store source data in result data frame
+            point_tc.loc[(sub, slice(None), slice(None)), :] = np.concatenate(
+                    [stc.data[vertidx, :].T for stc in stcs])
+            # alternatively:
+            # point_tc.loc[(sub, slice(None), slice(None)), :] = np.concatenate(
+            #         [stc.in_label(label).data.T for stc in stcs])
+            
+            point_tcs.append(point_tc)
+        
+        # just using label_tc as name to maintain backward compatibility
+        label_tc = pd.concat(point_tcs, axis=1)
+    else:
+        label_tc = pd.DataFrame([], 
+                                columns=pd.Index(labelnames, name='label'), 
+                                index=pd.MultiIndex.from_product(
+                                        [[sub], trials, times], 
+                                        names=['subject', 'trial', 'time']), 
+                                dtype=float)
+                            
+        for trial, stc in zip(trials, stcs):
+            label_tc.loc[(sub, trial, slice(None)), :] = (
+                    stc.extract_label_time_course(
+                            labels, fwd['src'], mode=label_mode).T)
         
     if fresh:
         mean = label_tc.mean()
