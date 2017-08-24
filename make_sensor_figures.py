@@ -313,6 +313,7 @@ fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
 # dot_x
 r_name = 'dot_x'
 label = second_level.loc[:, ('mu_mean', r_name)].mean(level='label').idxmax()
+#label = 'L_V1_ROI-lh'
 
 ax = axes[0]
 plot_single_source_signal(r_name, label, ax);
@@ -336,8 +337,8 @@ ax.legend([l, l1], ['single subjects', 'estimated mean'],
 
 fig.subplots_adjust(left=0.1, bottom=0.18, right=0.97)
 
-fig.savefig(os.path.join(figdir, 'example_area_tcs.png'), 
-            dpi=300)
+#fig.savefig(os.path.join(figdir, 'example_area_tcs.png'), 
+#            dpi=300)
 
 
 #%% source effects for response over time
