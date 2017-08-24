@@ -43,10 +43,16 @@ R = len(r_names)
 trialregs_dot = -1
 
 # source data to use
+
+# label mode = mean
+srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
+
 # label mode = mean_flip
 #srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
+
 # label mode= None, lselection=[V1, V2], window=[0, 0.4]
-srcfile = 'source_epochs_allsubs_HCPMMP1_201708151431.h5'
+#srcfile = 'source_epochs_allsubs_HCPMMP1_201708151431.h5'
+
 # label mode = (abs) max
 #srcfile = 'source_epochs_allsubs_HCPMMP1_201706271717.h5'
 

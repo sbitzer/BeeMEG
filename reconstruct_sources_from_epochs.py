@@ -25,7 +25,7 @@ sfreq = 100
 hfreq = sfreq
 
 # time window within an epoch to consider
-window = [0, 0.4]
+window = [0, 0.9]
 
 # chtype=True for all MEG-channels, chtype='mag' for magnetometers
 chtype = True
@@ -52,12 +52,11 @@ parc = 'HCPMMP1'
 
 # specific labels that should be stored, all others are discarded,
 # use empty list to indicate that all labels should be stored
-lselection = ['L_V1_ROI-lh', 'L_V2_ROI-lh',
-              'R_V1_ROI-rh', 'R_V2_ROI-rh']
+lselection = []
 
 # set to None to keep original source points, 
 # otherwise see MNE's extract_label_time_course for available modes
-label_mode = None
+label_mode = 'mean'
 
 options = pd.Series({'chtype': chtype, 'sfreq': sfreq, 'hfreq': hfreq, 
                      'method': method, 'fwd_surf_ori': fwd_surf_ori,

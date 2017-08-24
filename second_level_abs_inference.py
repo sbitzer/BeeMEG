@@ -47,11 +47,16 @@ import time
 # label_tc normalised across trials, times and subjects
 #basefile = 'source_sequential_201707031206.h5'
 
+# label mode = mean, baseline (-0.3, 0), only first 3 dots, 
+# trialregs_dot=3, source GLM, move_dist, sum_dot_y, constregs=0 for 1st dot, 
+# label_tc normalised across trials, times and subjects
+basefile = 'source_sequential_201708241011.h5'
+
 # GLM on source points of V1 and V2
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, source GLM, move_dist, 
 # sum_dot_y, constregs=0 for 1st dot, 
 # label_tc normalised across trials, times and subjects
-basefile = 'source_sequential_201708151458.h5'
+#basefile = 'source_sequential_201708151458.h5'
 
 directory = 'mne_subjects/fsaverage/bem/'
 
@@ -83,7 +88,7 @@ CS = 5000
 nofile = True
 while nofile:
     try:
-        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201708151458.h5.tmp',
+        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201708241011.h5.tmp',
                                       'first_level')
         nofile = False
     except FileNotFoundError:
