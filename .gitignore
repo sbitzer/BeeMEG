@@ -6,3 +6,4 @@ figures
 __pycache__
 .ipynb_checkpoints
 *.pyc
+*_tmp.*
