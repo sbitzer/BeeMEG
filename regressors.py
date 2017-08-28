@@ -197,6 +197,20 @@ for sub in subjecti:
 subject_trial_dot.loc[(slice(None), slice(None), slice(2, None)), 'accev'] = \
         subject_trial_dot.loc[(slice(None), slice(None), slice(1, 24)), 'lpr'].values
 
+# accumulated evidence Gram-Schmidt orthogonalised with respect to the 
+# x-position of the corresponding dot
+subject_trial_dot['lpr_orth'] = np.nan
+for sub in subjecti:
+    for dot in doti:
+        Q, _ = np.linalg.qr(
+                np.c_[trial_dot.loc[(slice(None), dot), 'dot_x'],
+                      subject_trial_dot.loc[(sub, slice(None), dot), 'lpr']])
+        
+        # Q is the negative of the Gram-Schmidt orthonormalised vectors, see
+        # https://cran.r-project.org/web/packages/matlib/vignettes/gramreg.html
+        subject_trial_dot.loc[(sub, slice(None), dot), 'lpr_orth'] = -Q[:, 1]
+del Q
+
 # do PCA to find a regressor that is not strongly correlated with dot_x, but 
 # still contains information about accumulated evidence
 def pca(sub):
