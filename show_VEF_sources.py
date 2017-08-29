@@ -90,9 +90,14 @@ def morph_divergent_cmap(cmap, clim):
 #%% load results from notebook and plot them
 measure = 'tval'
 hemi = 'rh'
-contrast = 'vertical'
+contrast = 'right_close'
 
-src_df = pd.read_hdf('VEFdata_tmp.h5', contrast)
+try:
+    src_df = pd.read_hdf('VEFdata_tmp.h5', contrast)
+except KeyError:
+    src_df = pd.read_hdf('VEFdata_tmp.h5', 'second_level')
+    src_df = src_df.xs(contrast, axis=1, level='regressor')
+
 if 'mlog10p' not in src_df.columns:
     src_df['mlog10p'] = -np.log10(src_df.pval)
 
@@ -134,4 +139,4 @@ clim = [0, 2., 5]
 
 brain = plot_V1V2(measure, hemi, clim)
 
-#brain.save_single_image('/home/bitzer/ZIH/texts/BeeMEG/figures/V1V2_%s_%d_%s.png' % (contrast, time*1000, hemi))
+brain.save_single_image('/home/bitzer/ZIH/texts/BeeMEG/figures/V1V2_%s_%d_%s.png' % (contrast, time*1000, hemi))
