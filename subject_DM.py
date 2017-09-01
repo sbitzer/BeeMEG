@@ -102,26 +102,25 @@ def get_ithdot_DM(doti=5, r_names=['dot_y', 'surprise', 'logpost_left',
 
 #%% normalisation
 def normfun(regressor, msratio=2):
-    # subtract mean, if you can get into trouble with collinearity with the 
-    # intercept, otherwise leave it be
     mean = regressor.mean()
     std = regressor.std()
-    if abs(mean) > msratio * std:
-        # subtracting the mean ensures that the regressor is orthogonal to the
-        # intercept, any average effect of the regressor will move to the 
-        # intercept such that only the variance of the signal with the 
-        # regressor remains, but don't remove the intercept
-        if not (mean==1 and std==0):
-            regressor = regressor - mean
     
-    # scale regressor such that its length is equal to the sqrt of its number
-    # of elements, this unifies the length of all regressors in a design matrix
-    # to the length of the intercept regressor consisting of all 1s, the 
-    # procedure makes all positive or negative regressors have standard 
-    # deviation close to 0.5 while regressors with varying sign will tend to 
-    # have standard deviation close to 1
-    return regressor / np.sqrt((regressor ** 2).sum() / regressor.size)
-
+    # don't normalise the intercept
+    if mean==1 and std==0:
+        return regressor
+    else:
+        # subtract mean, if you can get into trouble with collinearity with the 
+        # intercept, otherwise leave it be
+        if abs(mean) > msratio * std:
+            # subtracting the mean ensures that the regressor is orthogonal to the
+            # intercept, any average effect of the regressor will move to the 
+            # intercept such that only the variance of the signal with the 
+            # regressor remains
+            regressor = regressor - mean
+        
+        # scale regressor so that it's standard deviation = 1
+        return regressor / std
+    
 
 def normalise_DM(DM, normalise, msratio=2):
     if normalise:
@@ -165,7 +164,7 @@ def cnumfun(DM):
     DM = DM[:, np.any(DM != 0, axis=0)]
     
     # ensure that regressor vectors have length 1
-    DM = DM / np.sqrt((DM ** 2).sum())
+    DM = DM / np.sqrt((DM ** 2).sum(axis=0))
     
     eig = np.linalg.eigvals(np.dot(DM.T, DM))
     

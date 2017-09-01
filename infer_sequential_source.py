@@ -43,7 +43,7 @@ r_cats = subject_DM.regressors.get_regressor_categories(r_names)
 # if trialregs_dot = 0, all the data from the dot sequence is used and you 
 # essentially look for the average effect across the considered dot sequence
 # if trialregs_dot = -1 you use the last considered dot
-trialregs_dot = -1
+trialregs_dot = 0
 
 # source data to use
 
