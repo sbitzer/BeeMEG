@@ -14,7 +14,8 @@ import seaborn as sns
 
 #%% 
 def get_trial_DM(dots=5, subjects=None, r_names=['dot_y', 'surprise', 
-                 'logpost_left', 'entropy', 'trial_time', 'intercept']):
+                 'logpost_left', 'entropy', 'trial_time', 'intercept'],
+                 normalise=False):
     if subjects is None:
         subjects = regressors.subjecti
     else:
@@ -59,7 +60,7 @@ def get_trial_DM(dots=5, subjects=None, r_names=['dot_y', 'surprise',
     if 'intercept' in r_names:
         DM['intercept'] = 1
     
-    return DM
+    return normalise_DM(DM, normalise)
             
 
 def get_ithdot_DM_single_sub(sub, doti=5, intercept=True):
@@ -98,6 +99,91 @@ def get_ithdot_DM(doti=5, r_names=['dot_y', 'surprise', 'logpost_left',
             
     return DM
 
+
+#%% normalisation
+def normfun(regressor, msratio=2):
+    # subtract mean, if you can get into trouble with collinearity with the 
+    # intercept, otherwise leave it be
+    mean = regressor.mean()
+    std = regressor.std()
+    if abs(mean) > msratio * std:
+        # subtracting the mean ensures that the regressor is orthogonal to the
+        # intercept, any average effect of the regressor will move to the 
+        # intercept such that only the variance of the signal with the 
+        # regressor remains, but don't remove the intercept
+        if not (mean==1 and std==0):
+            regressor = regressor - mean
+    
+    # scale regressor such that its length is equal to the sqrt of its number
+    # of elements, this unifies the length of all regressors in a design matrix
+    # to the length of the intercept regressor consisting of all 1s, the 
+    # procedure makes all positive or negative regressors have standard 
+    # deviation close to 0.5 while regressors with varying sign will tend to 
+    # have standard deviation close to 1
+    return regressor / np.sqrt((regressor ** 2).sum() / regressor.size)
+
+
+def normalise_DM(DM, normalise, msratio=2):
+    if normalise:
+        # ensure that DM is a DataFrame, because apply in Series only works on
+        # single elements
+        DM = pd.DataFrame(DM)
+        
+        if normalise == 'subject':
+            subjects = DM.index.get_level_values('subject').unique()
+            
+            # if subject is not the outermost level, make it to that
+            levelnames = DM.index.names
+            if levelnames[0] != 'subject':
+                DM = DM.reorder_levels(
+                        ['subject'] + list(np.setdiff1d(levelnames, ['subject'])))
+            
+            # normalise within subject
+            DM = pd.concat(
+                    [DM.loc[sub].apply(normfun, args=(msratio,)) 
+                     for sub in subjects],
+                    keys=subjects,
+                    names=DM.index.names)
+            
+            # if subject wasn't outermost level, restore old order
+            if levelnames[0] != 'subject':
+                DM = DM.reorder_levels(levelnames).sort_index()
+                
+            return DM
+        else:
+            return DM.apply(normfun, args=(msratio,))
+    else:
+        return DM
+
+
+#%% collinearity
+def cnumfun(DM):
+    # ensure that array is standard numpy array
+    DM = np.array(DM)
+    
+    # only include columns in which at least one value is different from 0
+    DM = DM[:, np.any(DM != 0, axis=0)]
+    
+    # ensure that regressor vectors have length 1
+    DM = DM / np.sqrt((DM ** 2).sum())
+    
+    eig = np.linalg.eigvals(np.dot(DM.T, DM))
+    
+    return np.sqrt(eig.max() / eig.min())
+
+
+def compute_condition_number(DM, scope='full'):
+    if scope == 'full':
+        return cnumfun(DM)
+    elif scope == 'subject':
+        subjects = DM.index.get_level_values('subject').unique()
+        return pd.Series([cnumfun(DM.loc[sub]) for sub in subjects],
+                         index=subjects, name='condition number')
+    else:
+        raise ValueError('The chosen scope option is not defined!')
+
+
+#%%
 # run as script, if called
 if __name__ == '__main__':
     DM = get_ithdot_DM_single_sub(2)

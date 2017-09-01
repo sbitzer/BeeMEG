@@ -287,3 +287,41 @@ subject_trial_dot['dot_x_cflip'] = (
 subject_trial_dot['accev_cflip'] = (
         subject_trial_dot.accev.values
         * np.tile(subject_trial.response.values[:, None], [1, 25]).flatten())
+
+
+#%% subject x trial x time
+mprepsig = lambda t: np.fmax(  np.fmin(t + 0.6, 0.3) 
+                             + np.fmin(np.fmax((t + 0.3) / 3, 0), 0.1) 
+                             - np.fmax(4*t/3, 0), 0) / 0.4
+
+def motoprep(trt):
+    trt = np.atleast_1d(trt)
+    
+    mprep = pd.concat([
+            pd.Series(mprepsig(t - subject_trial.RT.values), 
+                      index=subject_trial.index)
+            for t in trt],
+            keys=trt, names=['time']+subject_trial.index.names)
+    
+    return mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+
+subject_trial_time = {'motoprep': motoprep}
+
+
+#%% categorising regressors according to their name
+def get_regressor_category(r_name):
+    if r_name in trial.columns or r_name in subject_trial.columns:
+        return 'trialreg'
+    elif r_name in trial_dot.columns or r_name in subject_trial_dot.columns:
+        return 'dotreg'
+    elif r_name in ['motoprep']:
+        return 'timereg'
+    elif r_name in ['intercept', 'constant']:
+        return 'constreg'
+
+def get_regressor_categories(r_names):
+    cats = ['trialreg', 'dotreg', 'timereg', 'constreg']
+    
+    return {cat: [r_name for r_name in r_names 
+                  if cat==get_regressor_category(r_name)] 
+            for cat in cats}

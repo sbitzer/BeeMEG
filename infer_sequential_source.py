@@ -26,9 +26,12 @@ rt_thresh = 0.1
 
 # names of regressors that should enter the GLM
 r_names = ['abs_dot_y', 'abs_dot_x', 'dot_y', 'dot_x', 'entropy', 'trial_time', 
-           'intercept', 'accev', 'accsur_pca', 'response', 'dot_x_cflip', 
-           'accev_cflip', 'move_dist', 'sum_dot_y_prev']
+           'intercept', 'accev', 'response', 'sum_dot_y_prev', 'motoprep']
 R = len(r_names)
+# sort for use in index below
+r_names.sort()
+# get associated regressor categories
+r_cats = subject_DM.regressors.get_regressor_categories(r_names)
 
 # do not look for 100 ms spaced equal effects for trial regressors, instead 
 # select a dot which defines the time points considered for the trial 
@@ -127,18 +130,18 @@ if 'RT' not in r_names:
 # select only the good trials
 DM = DM.loc[good_trials]
 
+# create new good_trials index which repeats good_trials for the chosen number
+# of dots, needed to select data below
+good_trials = pd.concat([good_trials for d in dots], keys=dots, 
+                        names=['dot'] + good_trials.index.names)
+good_trials = good_trials.reorder_levels(['subject', 'trial', 'dot']).sort_index()
+
 
 #%% reshape DM to have the dots in rows
-dotregs = []
-for col in DM.columns:
-    if col[-2:] == '_%d' % dots[0]:
-        dotregs.append(col[:-2])
-trialregs = list(np.setdiff1d(r_names, dotregs))
-        
 def get_dot_DM(DM, dot):
-    rn = list(map(lambda s: s+'_%d' % dot, dotregs))
-    DMdot = DM[trialregs + rn]
-    return DMdot.rename(columns=dict(zip(rn, dotregs)))
+    rn = list(map(lambda s: s+'_%d' % dot, r_cats['dotreg']))
+    DMdot = DM[r_cats['trialreg'] + r_cats['constreg'] + rn]
+    return DMdot.rename(columns=dict(zip(rn, r_cats['dotreg'])))
 
 DM = pd.concat([get_dot_DM(DM, dot) for dot in dots], keys=dots, 
                 names=['dot'] + DM.index.names)
@@ -155,37 +158,92 @@ constregs = constregs[constregs != 'intercept']
 
 # only dot-level regressor should be constant for the first dot, 
 # otherwise something's wrong
-assert np.setdiff1d(constregs, dotregs).size == 0
+assert np.setdiff1d(constregs, r_cats['dotreg']).size == 0
 
-otherregs = np.setdiff1d(r_names, list(constregs)+['intercept'])
-
-# for constregs I need to exclude first dot data from normalisation
-DM2const = DM.loc[(slice(None), slice(None), slice(2, dots[-1])), constregs]
-DM[constregs] = (DM[constregs] - DM2const.mean()) / DM2const.std()
-del DM2const
-
-# then set first dot values of constregs to 0 to exclude that they have any
-# influence on the estimation of the regressor betas
+# set first dot values of constregs to 0 to exclude that they have any
+# influence on the estimation of the regressor betas, this is a precaution as
+# it can be for single subjects that the constant value for the first dot has
+# a noticable influence on the overall effect, but this influence is then 
+# mainly due to the constant regressors picking up the average signal through
+# the collinearity with the intercept
 DM.loc[(slice(None), slice(None), 1), constregs] = 0
 
-# other regressors can be normalised in the standard way
-DM[otherregs] = (DM[otherregs] - DM[otherregs].mean()) / DM[otherregs].std()
+# now normalise the scale of all regressors within subjects, this also centers
+# the regressors, but only if their mean exceeds the standard deviation by a 
+# given factor (2 by default)
+DM = subject_DM.normalise_DM(DM, 'subject')
 
-# set trial regressors to 0 for all except the chosen dot
+# only now set trial regressors to 0 for all except the chosen dot, because
+# otherwise the calculation of the mean during normalisation would have been
+# obscured
 if trialregs_dot:
     if trialregs_dot < 0:
         trialregs_dot = dots[trialregs_dot]
     DM.loc[(slice(None), slice(None), np.setdiff1d(dots, trialregs_dot)), 
-           list(np.setdiff1d(trialregs, 'intercept'))] = 0
+           r_cats['trialreg']] = 0
 
 # just get mean and std of data across all subjects, trials and times
 epochs_mean = pd.read_hdf(srcfile, 'epochs_mean')
 epochs_std = pd.read_hdf(srcfile, 'epochs_std')
 
 
-#%% prepare output and helpers
+#%% prepare time-dependent regressors
+# index of last time point available for this analysis
 tendi = times.searchsorted(times[-1] - (dots.max() - 1) * helpers.dotdt * 1000)
 
+# include placeholders for time-dependent regressors in design matrix
+for r_name in r_cats['timereg']:
+    DM.insert(r_names.index(r_name), r_name, np.nan)
+
+# load time-dependent regressors for each time point of the analysis
+def get_timereg(r_name):
+    regs = []
+    for t0 in times[:tendi+1]:
+        reg = subject_DM.regressors.subject_trial_time[r_name](get_data_times(t0) / 1000)
+        reg = reg.loc[list(subjects)].loc[good_trials.values]
+        regs.append(reg)
+        
+    regs = pd.concat(regs, axis=0, keys=times[:tendi+1], names=['t0']+regs[0].index.names)
+    
+    # I run the normalisation across all time points, because I want the 
+    # regressor to have the same scale across time points. Although the 
+    # regressor vector is much longer here than for the DM above, the scale 
+    # will be comparable to the other regressors, because the normalisation 
+    # corrects for the length of the vector so that individual elements have a
+    # scale close to 1
+    return subject_DM.normalise_DM(regs, 'subject')
+
+timeDM = {r_name: get_timereg(r_name) for r_name in r_cats['timereg']}
+
+
+#%% check collinearity in design matrix using condition number
+def fill_in_timeDM(t0):
+    for r_name in timeDM.keys():
+        DM[r_name] = timeDM[r_name].loc[t0].values
+        
+    return DM
+
+# numbers from 10 indicate some problem with collinearity in design matrix
+# (see Rawlings1998, p. 371)
+# when motoprep is included, high condition numbers at early time points 
+# (<100 ms) result from motoprep only having very few non-zero values due to
+# late responses of some subjects
+DM_condition_numbers = pd.concat(
+        [subject_DM.compute_condition_number(
+                fill_in_timeDM(t0), scope='subject') 
+         for t0 in times[:tendi+1]],
+        axis=1, keys=times[:tendi+1])
+
+with pd.HDFStore(file, mode='r+', complevel=7, complib='blosc') as store:
+    store['DM_condition_numbers'] = DM_condition_numbers
+
+# warn, if there are more than 2 subjects with condition numbers above 10 at
+# any time point from 100 ms within the trial
+if np.any((DM_condition_numbers.loc[:, 100:] > 10).sum() > 2):
+    warn("High condition numbers of design matrix detected!")
+
+
+#%% prepare output and helpers
 srclabels = epochs_mean.index
 
 first_level = pd.DataFrame([], 
@@ -220,12 +278,6 @@ assert np.all(second_level.columns.levels[1] == DM.columns), 'order of ' \
 
 
 #%% infer
-# create new good_trials index which repeats good_trials for the chosen number
-# of dots, needed to select data below
-good_trials = pd.concat([good_trials for d in dots], keys=dots, 
-                        names=['dot'] + good_trials.index.names)
-good_trials = good_trials.reorder_levels(['subject', 'trial', 'dot']).sort_index()
-
 # original sequential order
 permutation = np.arange(480 * times.size)
 
@@ -258,6 +310,9 @@ for perm in np.arange(nperm+1):
                 
                 data = epochs.loc[(sub, slice(None), datat)]
                 data = data.loc[good_trials.loc[sub].values]
+                
+                for r_name in timeDM.keys():
+                    DM.loc[sub, r_name] = timeDM[r_name].loc[t0].loc[sub].values
         
                 for label in srclabels:
                     res = sm.OLS(data[label].values, DM.loc[sub].values, 

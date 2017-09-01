@@ -50,7 +50,13 @@ import time
 # label mode = mean, baseline (-0.3, 0), only first 3 dots, 
 # trialregs_dot=3, source GLM, move_dist, sum_dot_y, constregs=0 for 1st dot, 
 # label_tc normalised across trials, times and subjects
-basefile = 'source_sequential_201708241011.h5'
+#basefile = 'source_sequential_201708241011.h5'
+
+# label mode = mean, baseline (-0.3, 0), only first 3 dots, 
+# trialregs_dot=3, source GLM, sum_dot_y, motoprep, constregs=0 for 1st dot, 
+# vector-based normalisation of DM without centering
+# label_tc normalised across trials, times and subjects
+basefile = 'source_sequential_201709011135.h5'
 
 # GLM on source points of V1 and V2
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, source GLM, move_dist, 
@@ -62,15 +68,16 @@ directory = 'mne_subjects/fsaverage/bem/'
 
 # regressors for which to infer across-subject strength
 if basefile.startswith('source_seq'):
-    r_names = ['dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'move_dist', 
-               'accev', 'sum_dot_y_prev', 'response', 'entropy', 'trial_time', 
-               'intercept', 'accsur_pca', 'dot_x_cflip', 'accev_cflip']
+    r_names = ['dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'accev', 
+               'motoprep', 'sum_dot_y_prev', 'response', 'entropy', 'trial_time', 
+               'intercept']
 else:
     r_names = ['dot_x', 'dot_y', 'response', 'abs_dot_x', 'abs_dot_y', 'entropy', 
                'trial_time', 'intercept']
     
 # threshold for "posterior probability of the existence of a medium sized 
 # effect", i.e., the probability that a sample from the posterior is > p_thresh
+# this is in beta-units measuring the covariation magnitude between regressor and data
 p_thresh = 0.02
 
 # alpha-value defining the 'mu_testval' which is the alpha-quantile of the 
@@ -88,7 +95,7 @@ CS = 5000
 nofile = True
 while nofile:
     try:
-        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201708241011.h5.tmp',
+        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201709011135.h5.tmp',
                                       'first_level')
         nofile = False
     except FileNotFoundError:
