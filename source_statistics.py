@@ -39,7 +39,7 @@ def get_Glasser_section(area):
 
 def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99, 
                          bemdir=bem_dir, regressors=None, 
-                         exclude='trialregs', verbose=2, return_cdf=False):
+                         exclude=None, verbose=2, return_cdf=False):
     """Finds a value threshold for a measure corresponding to a given quantile.
     
         Pools values of the measure across all fitted regressors. Then finds 
@@ -54,17 +54,18 @@ def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99,
             with pd.HDFStore(os.path.join('data/inf_results', basefile), 'r') as store:
                 regressors = store.first_level.columns.levels[2]
     
-    if exclude == 'trialregs':
-        exclude = ['intercept', 'entropy', 'response', 'trial_time']
-    elif exclude == 'dotregs':
-        exclude = ['abs_dot_x', 'abs_dot_y', 'accev', 'accev_cflip', 
-                   'accsur_pca', 'dot_x', 'dot_x_cflip', 'dot_y', 'move_dist',
-                   'sum_dot_y_prev']
-    if verbose:
-        print('excluding:')
-        print('\n'.join(exclude), end='\n\n')
-    
-    regressors = np.setdiff1d(regressors, exclude)
+    if exclude:
+        if exclude == 'trialregs':
+            exclude = ['intercept', 'entropy', 'response', 'trial_time', 'motoprep']
+        elif exclude == 'dotregs':
+            exclude = ['abs_dot_x', 'abs_dot_y', 'accev', 'accev_cflip', 
+                       'accsur_pca', 'dot_x', 'dot_x_cflip', 'dot_y', 'move_dist',
+                       'sum_dot_y_prev']
+        if verbose:
+            print('excluding:')
+            print('\n'.join(exclude), end='\n\n')
+        
+        regressors = np.setdiff1d(regressors, exclude)
     
     values = np.array([], dtype=float)
     for r_name in regressors:
