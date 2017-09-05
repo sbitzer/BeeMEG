@@ -305,7 +305,38 @@ def motoprep(trt):
     
     return mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
 
-subject_trial_time = {'motoprep': motoprep}
+
+def motoresp(trt):
+    trt = np.atleast_1d(trt)
+    
+    mprep = pd.concat([
+            pd.Series(  mprepsig(t - subject_trial.RT.values)
+                      * subject_trial.response.values, 
+                      index=subject_trial.index)
+            for t in trt],
+            keys=trt, names=['time']+subject_trial.index.names)
+    
+    return mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+
+
+dcsig = lambda t: np.fmax(np.floor(t * 10) + 1, 0)
+
+def dotcount(trt):
+    trt = np.atleast_1d(trt)
+    
+    dcs = dcsig(trt)
+    
+    dcs = pd.concat([
+            pd.Series(np.fmin(dcsig(subject_trial.RT.values), dc), 
+                      index=subject_trial.index) 
+            for dc in dcs],
+            keys=trt, names=['time']+subject_trial.index.names)
+    
+    return dcs.reorder_levels(['subject', 'trial', 'time']).sort_index()
+
+subject_trial_time = {'motoprep': motoprep, 
+                      'motoresponse': motoresp, 
+                      'dotcount': dotcount}
 
 
 #%% categorising regressors according to their name
