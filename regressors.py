@@ -334,9 +334,98 @@ def dotcount(trt):
     
     return dcs.reorder_levels(['subject', 'trial', 'time']).sort_index()
 
+
+# number of dots
+D = doti.max()
+
+def accev_time(trt, delay=0.3):
+    """Computes assumed value of accumulated evidence at given time points.
+    
+        The assumption is that accumulated evidence will change after a given
+        delay from the occurrence of a dot. I use sum_dot_x_prev as base 
+        measure of accumulated evidence, because it fluctuates together with 
+        the log posterior ratio (lpr) and only differs by the offset given by
+        the bias which is constant for each subject and therefore anyway will
+        only move into the intercept. Furthermore, the lpr is sometimes 
+        undefined for late time points, because the model predicted that 
+        responses will be made before these data points. This is no issue with
+        sum_dot_x_prev.
+        
+        Will take a few seconds to compute, because I have to loop through 
+        subjects and trials to limit the value of accumulated evidence for time
+        points after the response.
+    """
+    
+    trt = np.atleast_1d(trt)
+    
+    file = os.path.join(helpers.resultsdir, 'accev_time_cache.h5')
+    
+    cached = False
+    try:
+        with pd.HDFStore(file, 'r') as store:
+            accev = store.select('accev_time', 'delay=delay')
+    except:
+        pass
+    else:
+        if not accev.empty:
+            times = pd.read_hdf(file, 'times')
+            if trt.size == times.size and np.all(trt == times):
+                accev = accev.xs(delay, level='delay')
+                cached = True
+        
+    if not cached:
+        dotinds = np.fmin(np.ceil(np.fmax(trt - delay, 0) / 0.1) + 1, D)
+        
+        accev = pd.concat([
+                trial_dot.sum_dot_x_prev.loc[(slice(None), ind)] 
+                for ind in dotinds],
+                keys=trt, names=['time']+trial_dot.index.names[:1])
+        accev = accev.reorder_levels(['trial', 'time']).sort_index()
+        accev = pd.concat([accev]*subjecti.size, 
+                          keys=subjecti, 
+                          names=['subject', 'trial', 'time'])
+        
+        # if trt is past RT+delay, set accev to value at RT+delay
+        
+        # get tend
+        tend = subject_trial.RT + delay
+        # get sum_dot_x_prev value at tend
+        dotinds = np.fmin(np.ceil(np.fmax(tend - delay, 0) / 0.1) + 1, D)
+    
+        for sub in subjecti:
+            for trial in triali:
+                tend_val = trial_dot.sum_dot_x_prev.loc[
+                        (trial, dotinds.loc[(sub, trial)])]
+                # replace all values in accev with trt > tend with tend_val
+                aloc = accev.loc[(sub, trial)].values
+                aloc[trt > tend.loc[(sub, trial)]] = tend_val
+                accev.loc[(sub, trial)] = aloc
+                
+        with pd.HDFStore(file, 'a') as store:
+            # only cache regressor, if the existing times in the cache match
+            try:
+                cache_times = store['times']
+            except:
+                cache_times = pd.Series(trt)
+                store['times'] = cache_times
+            
+            if trt.size == cache_times.size and np.all(trt == cache_times):
+                accev = pd.DataFrame(accev)
+                accev['delay'] = delay
+                accev.set_index('delay', append=True, inplace=True)
+                accev = accev.iloc[:, 0]
+                
+                store.append('accev_time', accev)
+                
+                accev = accev.xs(delay, level='delay')
+            
+    return accev
+    
+
 subject_trial_time = {'motoprep': motoprep, 
                       'motoresponse': motoresp, 
-                      'dotcount': dotcount}
+                      'dotcount': dotcount,
+                      'accev_time': accev_time}
 
 
 #%% categorising regressors according to their name

@@ -24,7 +24,13 @@ from surfer import Brain
 # source GLM, motoprep, motoresponse, dotcount
 # subject-specific normalisation of DM without centering and scaling by std
 # label_tc normalised across trials, times and subjects
-basefile = 'source_time_201709051204.h5'
+#basefile = 'source_time_201709051204.h5'
+
+# label mode = mean, baseline (-0.3, 0)
+# source GLM, motoprep, motoresponse, dotcount, accev_time delay 0.3
+# subject-specific normalisation of DM without centering and scaling by std
+# label_tc normalised across trials, times and subjects
+basefile = 'source_time_201709061815.h5'
 
 second_level = pd.read_hdf('data/inf_results/' + basefile, 'second_level')
 
@@ -51,7 +57,7 @@ def plot(r_name, measure, mask=None, clim=[0, 3., 5]):
     
     return labels
 
-r_name = 'dotcount'
+r_name = 'accev_time'
 show_measure = 'tval'
 
 labels = plot(r_name, show_measure)

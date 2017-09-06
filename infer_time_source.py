@@ -20,7 +20,7 @@ import gc
 
 #%% options
 # names of regressors that should enter the GLM
-r_names = ['motoprep', 'dotcount', 'motoresponse']
+r_names = ['accev_time', 'motoprep', 'dotcount', 'motoresponse']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
@@ -46,6 +46,8 @@ nperm = 3
 # across trials, time points and subjects
 normsrc = True
 
+accev_delay = 0.1
+
 # where to store
 file = pd.datetime.now().strftime('source_time'+'_%Y%m%d%H%M'+'.h5')
 # tmp-file should use local directory (preventing issue with remote store)
@@ -54,8 +56,8 @@ file = os.path.join(helpers.resultsdir, file)
 
 # create HDF5-file and save chosen options
 with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
-    store['scalar_params'] = pd.Series([normsrc], 
-         ['normsrc'])
+    store['scalar_params'] = pd.Series([normsrc, accev_delay], 
+         ['normsrc', 'accev_delay'])
     store['srcfile'] = pd.Series(srcfile)
     
     
@@ -70,26 +72,17 @@ times = epochs.index.levels[2]
 
 
 #%% create design matrix
-def get_timereg(r_name):
-    regs = []
-    for t0 in times:
-        reg = subject_DM.regressors.subject_trial_time[r_name](t0 / 1000)
-        reg = reg.loc[list(subjects)]
-        reg.name = r_name
-        regs.append(reg)
-        
-    regs = pd.concat(regs, axis=0)
+print('creating design matrix ...', flush=True)
+regfuns = subject_DM.regressors.subject_trial_time.copy()
+regfuns['accev_time'] = (
+        lambda trt: subject_DM.regressors.subject_trial_time['accev_time']
+                    (trt, accev_delay))
+
+DM = pd.concat([regfuns[r_name](times / 1000) for r_name in r_names], 
+               axis=1, keys=r_names)
+
+DM = subject_DM.normalise_DM(DM, 'subject').sort_index()
     
-    # I run the normalisation across all time points, because I want the 
-    # regressor to have the same scale across time points. Although the 
-    # regressor vector is much longer here than for the DM above, the scale 
-    # will be comparable to the other regressors, because the normalisation 
-    # corrects for the length of the vector so that individual elements have a
-    # scale close to 1
-    return subject_DM.normalise_DM(regs, 'subject').sort_index()
-
-DM = pd.concat([get_timereg(r_name) for r_name in r_names], axis=1)
-
 # add intercept
 DM['intercept'] = 1
 DM.sort_index(axis=1, inplace=True)
@@ -164,7 +157,7 @@ for perm in np.arange(nperm+1):
             np.random.shuffle(permutation[:, t])
             
     for s, sub in enumerate(subjects):
-        print('\rsubject = %2d' % sub, end='')
+        print('\rsubject = %2d' % sub, end='', flush=True)
             
         with pd.HDFStore(srcfile, 'r') as store:
             epochs = store.select('label_tc', 'subject=sub').copy()
