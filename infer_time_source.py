@@ -46,7 +46,7 @@ nperm = 3
 # across trials, time points and subjects
 normsrc = True
 
-accev_delay = 0.1
+accev_delay = 0.4
 
 # where to store
 file = pd.datetime.now().strftime('source_time'+'_%Y%m%d%H%M'+'.h5')
