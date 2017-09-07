@@ -62,7 +62,13 @@ import time
 # trialregs_dot=0, source GLM, sum_dot_y, motoprep, constregs=0 for 1st dot, 
 # subject-specific normalisation of DM without centering and scaling by std
 # label_tc normalised across trials, times and subjects
-basefile = 'source_sequential_201709011758.h5'
+#basefile = 'source_sequential_201709011758.h5'
+
+# label mode = mean, baseline (-0.3, 0), first 5 dots, 
+# trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
+# subject-specific normalisation of DM without centering and scaling by std
+# label_tc normalised across trials, times and subjects
+basefile = 'source_sequential_201709061827.h5'
 
 # GLM on source points of V1 and V2
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, source GLM, move_dist, 
@@ -75,8 +81,7 @@ directory = 'mne_subjects/fsaverage/bem/'
 # regressors for which to infer across-subject strength
 if basefile.startswith('source_seq'):
     r_names = ['dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'accev', 
-               'motoprep', 'sum_dot_y_prev', 'response', 'entropy', 'trial_time', 
-               'intercept']
+               'sum_dot_y_prev', 'intercept']
 else:
     r_names = ['dot_x', 'dot_y', 'response', 'abs_dot_x', 'abs_dot_y', 'entropy', 
                'trial_time', 'intercept']
@@ -101,7 +106,7 @@ CS = 5000
 nofile = True
 while nofile:
     try:
-        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201709011758.h5.tmp',
+        first_level_src = pd.read_hdf('/media/bitzer/Data/source_sequential_201709061827.h5.tmp',
                                       'first_level')
         nofile = False
     except FileNotFoundError:

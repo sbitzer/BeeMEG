@@ -18,15 +18,15 @@ from warnings import warn
 
 #%% options
 # which dot to investigate?
-dots = np.arange(1, 4)
+dots = np.arange(1, 6)
 
 # implements the assumption that in a trial with RT<(dot onset time + rt_thresh)
 # there cannot be an effect of the last considered dot in the MEG signal
 rt_thresh = 0.1
 
 # names of regressors that should enter the GLM
-r_names = ['abs_dot_y', 'abs_dot_x', 'dot_y', 'dot_x', 'entropy', 'trial_time', 
-           'intercept', 'accev', 'response', 'sum_dot_y_prev', 'motoprep']
+r_names = ['abs_dot_y', 'abs_dot_x', 'dot_y', 'dot_x', 'intercept', 
+           'accev', 'sum_dot_y_prev']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
@@ -304,7 +304,7 @@ for perm in np.arange(nperm+1):
             epochs.loc[:] = epochs.values[permutation.flatten(), :]
             
             for t0 in times[:tendi+1]:
-                print('\rsubject = %2d, t0 = %3d' % (sub, t0), end='')
+                print('\rsubject = %2d, t0 = %3d' % (sub, t0), end='', flush=True)
         
                 datat = get_data_times(t0)
                 
