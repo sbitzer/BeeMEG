@@ -411,7 +411,7 @@ def accev_time(trt, delay=0.3):
             
             if trt.size == cache_times.size and np.all(trt == cache_times):
                 accev = pd.DataFrame(accev)
-                accev['delay'] = delay
+                accev['delay'] = float(delay)
                 accev.set_index('delay', append=True, inplace=True)
                 accev = accev.iloc[:, 0]
                 
