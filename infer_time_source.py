@@ -20,7 +20,7 @@ import gc
 
 #%% options
 # names of regressors that should enter the GLM
-r_names = ['accev_time', 'motoprep', 'dotcount', 'motoresponse']
+r_names = ['dotx_time', 'accev_time', 'motoprep', 'dotcount', 'motoresponse']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
@@ -40,13 +40,13 @@ srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
 srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
 
 # How many permutations should be computed?
-nperm = 3
+nperm = 2
 
 # whether to normalise the source signal to have mean 0 and std 1 in each area
 # across trials, time points and subjects
 normsrc = True
 
-accev_delay = 0.4
+accev_delay = 0.3
 
 # where to store
 file = pd.datetime.now().strftime('source_time'+'_%Y%m%d%H%M'+'.h5')
@@ -76,6 +76,9 @@ print('creating design matrix ...', flush=True)
 regfuns = subject_DM.regressors.subject_trial_time.copy()
 regfuns['accev_time'] = (
         lambda trt: subject_DM.regressors.subject_trial_time['accev_time']
+                    (trt, accev_delay))
+regfuns['dotx_time'] = (
+        lambda trt: subject_DM.regressors.subject_trial_time['dotx_time']
                     (trt, accev_delay))
 
 DM = pd.concat([regfuns[r_name](times / 1000) for r_name in r_names], 
