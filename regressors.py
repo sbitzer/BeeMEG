@@ -318,6 +318,28 @@ def motoresp(trt):
     
     return mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
 
+# number of dots
+D = doti.max()
+maxrt = helpers.dotdt * D
+linprepsig = lambda x: x / maxrt + 1
+
+def motoresp_lin(trt):
+    """A signal that simply linearly increases throughout the trial, if the 
+       response was right, and decreases, if the response was left, with a 
+       fixed positive or negative height of 1 at response time and slope 
+       chosen so that 0 is only reached for the largest allowed response time.
+    """
+    trt = np.atleast_1d(trt)
+    
+    mprep = pd.concat([
+            pd.Series(  linprepsig(t - subject_trial.RT.values)
+                      * subject_trial.response.values, 
+                      index=subject_trial.index)
+            for t in trt],
+            keys=trt, names=['time']+subject_trial.index.names)
+    
+    return mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+       
 
 dcsig = lambda t: np.fmax(np.floor(t * 10) + 1, 0)
 
@@ -334,9 +356,6 @@ def dotcount(trt):
     
     return dcs.reorder_levels(['subject', 'trial', 'time']).sort_index()
 
-
-# number of dots
-D = doti.max()
 
 def accev_time(trt, delay=0.3):
     """Computes assumed value of accumulated evidence at given time points.
