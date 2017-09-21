@@ -245,13 +245,26 @@ fig2 = sensor_signal_plot('dot_x', 'MEG2241', 0.17, 'x-coordinate')
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, move_dist, 
 # sum_dot_y, constregs=0 for 1st dot, 
 # label_tc normalised across trials, times and subjects
-basefile = 'source_sequential_201707031206.h5'
+#basefile = 'source_sequential_201707031206.h5'
 
-regressors = ['dot_x', 'dot_y', 'response']
+# label mode = mean, baseline (-0.3, 0), first 5 dots, 
+# trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
+# subject-specific normalisation of DM without centering and scaling by std
+# label_tc normalised across trials, times and subjects
+basefile = 'source_sequential_201709061827.h5'
 
-second_level = pd.concat([ss.load_src_df(basefile, reg) for reg in regressors],
-                         axis=1, keys=regressors, names=['regressor', 'measure'])
-second_level = second_level.swaplevel(axis=1).sort_index(axis=1)
+regressors = ['dot_x', 'dot_y', 'accev']
+
+measure = 'mean'
+
+if measure in ['mu_mean', 'mu_p_large']:
+    second_level = pd.concat([ss.load_src_df(basefile, reg) for reg in regressors],
+                             axis=1, keys=regressors, names=['regressor', 'measure'])
+    second_level = second_level.swaplevel(axis=1).sort_index(axis=1)
+else:
+    second_level_perms = pd.read_hdf(os.path.join(helpers.resultsdir, basefile), 
+                               'second_level')
+    second_level = second_level_perms.loc[0]
 
 first_level = pd.read_hdf(os.path.join(helpers.resultsdir, basefile), 
                           'first_level')
@@ -265,11 +278,14 @@ def plot_single_source_signal(r_name, label, ax, t_off=0):
     
     l = ax.plot(times, dat, color='.7', lw=1, label='single subjects')
     
-    # get mean beta of folded normal mixture
-    dat_mu = second_level.loc[(label, slice(None)), ('mu_mean', r_name)]
-    dat_theta = second_level.loc[(label, slice(None)), ('theta_mean', r_name)]
-    
-    mean_beta = dat_theta * dat_mu - (1 - dat_theta) * dat_mu
+    if measure == 'mu_mean':
+        # get mean beta of folded normal mixture
+        dat_mu = second_level.loc[(label, slice(None)), ('mu_mean', r_name)]
+        dat_theta = second_level.loc[(label, slice(None)), ('theta_mean', r_name)]
+        
+        mean_beta = dat_theta * dat_mu - (1 - dat_theta) * dat_mu
+    else:
+        mean_beta = second_level.loc[(label, slice(None)), (measure, r_name)]
     
     l1, = ax.plot(times, mean_beta, 'k', lw=2, label='mean')
     
@@ -280,23 +296,36 @@ def plot_single_source_signal(r_name, label, ax, t_off=0):
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
 
 # dot_x
-values = second_level.loc[:, ('mu_mean', 'dot_x')].mean(level='time')
-x_times = [120, 180, 320, 400]
+values = second_level.loc[:, (measure, 'dot_x')].abs().mean(level='time')
+x_times = [120, 170, 320, 400]
 
 ax = axes[0]
-ax.plot(values.index, values)
+line, = ax.plot(values.index, values)
 ax.plot(x_times, values.loc[x_times], '.k', ms=10)
 ax.set_xlabel('time from dot onset (ms)')
-ax.set_ylabel('average posterior mu')
+if measure == 'mu_mean':
+    ax.set_ylabel('average posterior mu')
+elif measure == 'mean':
+    ax.set_ylabel('average absolute beta')
+    for p in range(1, 3):
+        ax.plot(values.index, 
+                second_level_perms.loc[p, (measure, 'dot_x')].abs().mean(level='time'),
+                ':', color=line.get_color(), lw=1)
 ax.set_title('x-coordinate', fontdict={'fontsize': 12})
 
 # dot_y
-values = second_level.loc[:, ('mu_mean', 'dot_y')].mean(level='time')
-y_times = [120, 180]
+values = second_level.loc[:, (measure, 'dot_y')].abs().mean(level='time')
+y_times = [120, 170, 320]
 
 ax = axes[1]
 ax.plot(values.index, values)
 ax.plot(y_times, values.loc[y_times], '.k', ms=10)
+if measure == 'mean':
+    for p in range(1, 3):
+        pl, = ax.plot(values.index, 
+                second_level_perms.loc[p, (measure, 'dot_y')].abs().mean(level='time'),
+                ':', color=line.get_color(), lw=1)
+    ax.legend([line, pl], ['data', 'permuted'])
 ax.set_xlabel('time from dot onset (ms)')
 ax.set_title('y-coordinate', fontdict={'fontsize': 12})
 
@@ -312,33 +341,88 @@ fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
 
 # dot_x
 r_name = 'dot_x'
-label = second_level.loc[:, ('mu_mean', r_name)].mean(level='label').idxmax()
+label = second_level.loc[:, (measure, r_name)].abs().mean(level='label').idxmax()
 #label = 'L_V1_ROI-lh'
 
 ax = axes[0]
 plot_single_source_signal(r_name, label, ax);
-ax.plot(ax.get_xlim(), np.r_[0, 0], ':k')
+xl = ax.get_xlim()
+ax.plot(xl, np.r_[0, 0], ':k')
 ax.set_xlabel('time from dot onset (ms)')
 ax.set_ylabel('beta-values')
 ax.set_title('x-coordinate (%s-%s)' % (label[0], label[2:-7]))
 
 # dot_y
 r_name = 'dot_y'
-label = second_level.loc[:, ('mu_mean', r_name)].mean(level='label').idxmax()
+label = second_level.loc[:, (measure, r_name)].abs().mean(level='label').idxmax()
 
 ax = axes[1]
 l, l1 = plot_single_source_signal(r_name, label, ax);
 ax.plot(ax.get_xlim(), np.r_[0, 0], ':k')
 ax.set_xlabel('time from dot onset (ms)')
 ax.set_title('y-coordinate (%s-%s)' % (label[0], label[2:-7]))
+ax.set_xlim(xl)
 
 ax.legend([l, l1], ['single subjects', 'estimated mean'], 
           loc='lower right');
 
 fig.subplots_adjust(left=0.1, bottom=0.18, right=0.97)
 
-#fig.savefig(os.path.join(figdir, 'example_area_tcs.png'), 
-#            dpi=300)
+fig.savefig(os.path.join(figdir, 'example_area_tcs.png'), 
+            dpi=300)
+
+
+#%% average effects for accev over time
+fig, ax = plt.subplots(1, figsize=[4, 3])
+
+values = second_level.loc[:, (measure, 'accev')].abs().mean(level='time')
+
+x_times = [20, 120, 230, 300]
+
+line, = ax.plot(values.index, values)
+ax.plot(x_times, values.loc[x_times], '.k', ms=10)
+ax.set_xlabel('time from dot onset (ms)')
+if measure == 'mu_mean':
+    ax.set_ylabel('average posterior mu')
+elif measure == 'mean':
+    ax.set_ylabel('average absolute beta')
+    for p in range(1, 3):
+        ax.plot(values.index, 
+                second_level_perms.loc[p, (measure, 'dot_x')].abs().mean(level='time'),
+                ':', color=line.get_color(), lw=1)
+ax.set_title('accumulated evidence', fontdict={'fontsize': 12})
+
+fig.subplots_adjust(top=0.89, bottom=0.16, left=0.19, right=0.96)
+fig.savefig(os.path.join(figdir, 'av_mu_mean_source_accev.png'), 
+            dpi=300)
+
+
+#%% example time courses for accev
+fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
+
+r_name = 'accev'
+
+print(second_level.loc[:, (measure, r_name)].abs().mean(level='label')
+      .sort_values(ascending=False).head(10))
+
+labels = ['R_v23ab_ROI-rh', 'R_4_ROI-rh']
+
+for ax, label in zip(axes, labels):
+    l, l1 = plot_single_source_signal(r_name, label, ax);
+    xl = ax.get_xlim()
+    ax.plot(xl, np.r_[0, 0], ':k')
+    ax.set_xlabel('time from dot onset (ms)')
+    ax.set_ylabel('beta-values')
+    ax.set_title('accumulated evidence (%s-%s)' % (label[0], label[2:-7]))
+
+ax.set_xlim(second_level.index.levels[1][[0, -1]])
+
+ax.legend([l, l1], ['single subjects', 'estimated mean']);
+
+fig.subplots_adjust(left=0.1, bottom=0.18, right=0.97)
+
+fig.savefig(os.path.join(figdir, 'example_area_tcs_accev.png'), 
+            dpi=300)
 
 
 #%% source effects for response over time
