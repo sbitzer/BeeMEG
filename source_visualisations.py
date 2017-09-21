@@ -23,6 +23,7 @@ import numpy as np
 import glob
 import pandas as pd
 import matplotlib
+import matplotlib.pyplot as plt
 import seaborn as sns
 import source_statistics as ss
 
@@ -50,7 +51,8 @@ Glasser_areas = pd.read_csv('Glasser2016_areas.csv', index_col=0)
 measure_basevals = {'mu_mean': 0, 'mu_std': np.inf, 'mu_t': 0, 'mu_testval': 0,
                     'mu_p_large': 0, 'sigma_mean': np.inf, 'sigma_std': np.inf,
                     'theta_mean': 0.5, 'theta_std': np.inf, 'lp_mean': 0,
-                    'lp_std': np.inf, 'overlap': 0, 'consistency': 0.5}
+                    'lp_std': np.inf, 'overlap': 0, 'consistency': 0.5,
+                    'mean': 0, 'tval': 0, 'mlog10p': 0, 'std': 0}
 
 def set_regions(vseries, aggfun=lambda a: np.max(a, axis=0)):
     """Set all vertices belonging to a Glasser region/section to one value.
@@ -92,9 +94,9 @@ def show_timecourses(tc_df, ylim, L=3, logy=False):
         N = active.shape[1]
         
         if N > 0:
-            fig, axes = sns.plt.subplots(int(np.ceil(N/float(L))), 1, 
-                                         sharex=True, 
-                                         figsize=[8, max(4, N / float(L) * 1.3)])
+            fig, axes = plt.subplots(int(np.ceil(N/float(L))), 1, 
+                                     sharex=True, 
+                                     figsize=[8, max(4, N / float(L) * 1.3)])
             
             try:
                 for i, ax in enumerate(axes):

@@ -22,6 +22,7 @@ else:
     subjects_dir = os.path.expanduser('~\\BeeMEG\\mne_subjects')
 subject = 'fsaverage'
 bem_dir = os.path.join(subjects_dir, subject, 'bem')
+inf_dir = os.path.join('data', 'inf_results')
 
 Glasser_sections = pd.read_csv('Glasser2016_sections.csv', index_col=0)
 Glasser_areas = pd.read_csv('Glasser2016_areas.csv', index_col=0)
@@ -39,7 +40,8 @@ def get_Glasser_section(area):
 
 def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99, 
                          bemdir=bem_dir, regressors=None, 
-                         exclude=None, verbose=2, return_cdf=False):
+                         exclude=None, verbose=2, return_cdf=False,
+                         use_basefile=False, perm=0):
     """Finds a value threshold for a measure corresponding to a given quantile.
     
         Pools values of the measure across all fitted regressors. Then finds 
@@ -51,7 +53,7 @@ def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99,
             with pd.HDFStore(os.path.join(bemdir, basefile), 'r') as store:
                 regressors = store.first_level_src.columns.levels[1]
         except (FileNotFoundError, OSError):
-            with pd.HDFStore(os.path.join('data/inf_results', basefile), 'r') as store:
+            with pd.HDFStore(os.path.join(inf_dir, basefile), 'r') as store:
                 regressors = store.first_level.columns.levels[2]
     
     if exclude:
@@ -67,15 +69,24 @@ def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99,
         
         regressors = np.setdiff1d(regressors, exclude)
     
-    values = np.array([], dtype=float)
-    for r_name in regressors:
-        if verbose:
-            print('adding ' + r_name)
-        
-        fname = basefile[:-3] + '_slabs_' + r_name + '.h5'
-        
-        with pd.HDFStore(os.path.join(bemdir, fname), 'r') as store:
-            values = np.r_[values, store.second_level_src[measure].values]
+    if use_basefile:
+        with pd.HDFStore(os.path.join(inf_dir, basefile), 'r') as store:
+            if verbose:
+                for r_name in regressors:
+                    print('adding ' + r_name)
+            values = (store
+                      .second_level.loc[perm, (measure, list(regressors))]
+                      .values.flatten())
+    else:
+        values = np.array([], dtype=float)
+        for r_name in regressors:
+            if verbose:
+                print('adding ' + r_name)
+            
+            fname = basefile[:-3] + '_slabs_' + r_name + '.h5'
+            
+            with pd.HDFStore(os.path.join(bemdir, fname), 'r') as store:
+                values = np.r_[values, store.second_level_src[measure].values]
     
     if verbose:
         print('N = %d' % values.size)
@@ -119,13 +130,22 @@ def get_time_clusters(measure_series, threshold, cdf):
 
 
 def get_fdrcorr_clusters(basefile, regressors, measure, threshold, cdf, 
-                         fdr_alpha=0.001):
-    clusters = []
-    for r_name in regressors:
-        srcfile = basefile[:-3] + '_slabs_%s.h5' % r_name
-        file = os.path.join(bem_dir, srcfile)
-        src_df = pd.read_hdf(file, 'second_level_src')
-        clusters.append(get_time_clusters(src_df[measure], threshold, cdf))
+                         fdr_alpha=0.001, use_basefile=False, perm=0):
+    
+    if use_basefile:
+        second_level = pd.read_hdf(os.path.join(inf_dir, basefile),
+                                   'second_level')
+        clusters = [
+                get_time_clusters(second_level.loc[perm, (measure, r_name)],
+                                  threshold, cdf)
+                for r_name in regressors]
+    else:
+        clusters = []
+        for r_name in regressors:
+            srcfile = basefile[:-3] + '_slabs_%s.h5' % r_name
+            file = os.path.join(bem_dir, srcfile)
+            src_df = pd.read_hdf(file, 'second_level_src')
+            clusters.append(get_time_clusters(src_df[measure], threshold, cdf))
     
     clusters = pd.concat(clusters, keys=regressors, 
                          names=['regressor', 'cluster'])
@@ -154,10 +174,14 @@ def apply_cluster_mask(src_df, clusters, regressor):
     src_df[mask] = np.nan
     
 
-def load_src_df(basefile, regressor, clusters=None):
+def load_src_df(basefile, regressor, clusters=None, use_basefile=False, perm=0):
     """Load src_df for given regressor and result and mask by clusters, if given."""
-    file = os.path.join(bem_dir, basefile[:-3] + '_slabs_%s.h5' % regressor)
-    src_df = pd.read_hdf(file, 'second_level_src')
+    if use_basefile:
+        src_df = pd.read_hdf(os.path.join(inf_dir, basefile), 'second_level')
+        src_df = src_df.loc[perm].xs(regressor, axis=1, level='regressor')
+    else:
+        file = os.path.join(bem_dir, basefile[:-3] + '_slabs_%s.h5' % regressor)
+        src_df = pd.read_hdf(file, 'second_level_src')
     
     if clusters is not None:
         apply_cluster_mask(src_df, clusters, regressor)
