@@ -52,7 +52,8 @@ measure_basevals = {'mu_mean': 0, 'mu_std': np.inf, 'mu_t': 0, 'mu_testval': 0,
                     'mu_p_large': 0, 'sigma_mean': np.inf, 'sigma_std': np.inf,
                     'theta_mean': 0.5, 'theta_std': np.inf, 'lp_mean': 0,
                     'lp_std': np.inf, 'overlap': 0, 'consistency': 0.5,
-                    'mean': 0, 'tval': 0, 'mlog10p': 0, 'std': 0}
+                    'mean': 0, 'tval': 0, 'mlog10p': 0, 'std': 0, 'abstval': 0,
+                    'absmean': 0}
 
 def set_regions(vseries, aggfun=lambda a: np.max(a, axis=0)):
     """Set all vertices belonging to a Glasser region/section to one value.
@@ -197,60 +198,10 @@ if sys.version_info < (3,):
         return brain
     
     
-    def morph_colortable(table, clim):
-        table_new = table.copy()
-        
-        n_colors = table.shape[0]
-        n_colors2 = int(n_colors / 2)
-        
-        # control points in data space
-        fmin, fmid, fmax = clim
-        
-        # Index of fmid in new colorbar (which position along the N colors would
-        # fmid take, if fmin is first and fmax is last?)
-        fmid_idx = int(np.round(n_colors * ((fmid - fmin) /
-                                            (fmax - fmin))) - 1)
-        
-        # morph each color channel so that fmid gets assigned the middle color of
-        # the original table and the number of colors to the left and right are 
-        # stretched or squeezed such that they correspond to the distance of fmid 
-        # to fmin and fmax, respectively
-        for i in range(4):
-            part1 = np.interp(np.linspace(0, n_colors2 - 1, fmid_idx + 1),
-                              np.arange(n_colors),
-                              table[:, i])
-            table_new[:fmid_idx + 1, i] = part1
-            part2 = np.interp(np.linspace(n_colors2, n_colors - 1,
-                                          n_colors - fmid_idx - 1),
-                              np.arange(n_colors),
-                              table[:, i])
-            table_new[fmid_idx + 1:, i] = part2
-            
-        return table_new
-    
-    
-    def morph_divergent_cmap(cmap, clim):
-        if len(clim) == 3:
-            if clim[0] == 0:
-                clim = np.r_[-np.flipud(clim[1:]), clim]
-            else:
-                raise ValueError("For divergent colormap clim needs to be either "
-                                 "of length 5, or the inflection point at clim[0] "
-                                 " must be 0.")
-        else:
-            raise ValueError("For divergent colormap clim needs to be either "
-                                 "of length 5, or the inflection point at clim[0] "
-                                 " must be 0.")
-        
-        n_colors = cmap.shape[0]
-        
-        return np.r_[morph_colortable(cmap[:int(n_colors/2), :], clim[:3]), 
-                     morph_colortable(cmap[int(n_colors/2):, :], clim[2:])]
-    
-    
     def show_labels_as_data(src_df, measure, brain, labels=None, transform=None,
-                            parc='HCPMMP1', transparent=None, colormap='auto',
-                            initial_time=None, colorbar=True, clim='auto',
+                            parc='HCPMMP1', fmin=None, fmid=None, fmax=None, 
+                            center=None, transparent=True, colormap='auto',
+                            initial_time=None, colorbar=True,
                             threshold=0, region_aggfun=None):
         """Uses efficient brain.add_data to show activation of Glasser areas/labels.
         
@@ -297,23 +248,6 @@ if sys.version_info < (3,):
                              'sources in data ({})!'.format(len(labels),
                              src_df.index.levels[0].size))
         
-        if colormap == 'divtrans':
-            cmap = matplotlib.cm.coolwarm_r(np.arange(256))
-            cmap[:, -1] = np.r_[np.ones(64), np.linspace(1, 0, 64),
-                                np.linspace(0, 1, 64), np.ones(64)]
-            cmap = morph_divergent_cmap(cmap * 255, clim)
-        else:
-            # use MNE color stuff
-            ctrl_pts, cmap = mne.viz._3d._limits_to_control_points(
-                    clim, values, colormap)
-            if cmap in ('mne', 'mne_analyze'):
-                cmap = mne.viz.utils.mne_analyze_colormap(ctrl_pts)
-                scale_pts = [-1 * ctrl_pts[-1], 0, ctrl_pts[-1]]
-                transparent = False if transparent is None else transparent
-            else:
-                scale_pts = ctrl_pts
-                transparent = True if transparent is None else transparent
-    
         if values.index.levels[1].max() > 100:
             time_label_fun = lambda x: '%4d ms' % x
         else:
@@ -327,24 +261,13 @@ if sys.version_info < (3,):
                 data[labels[name].vertices, :] = values.xs(name, level='label')
             
             # plot
-            if colormap == 'divtrans':
-                brain.add_data(data, time=src_df.index.levels[1].values, 
-                               time_label=time_label_fun,
-                               colormap=cmap, colorbar=colorbar, hemi=hemi, 
-                               remove_existing=True, min=-clim[2], max=clim[2])
-            else:
-                brain.add_data(data, time=src_df.index.levels[1].values, 
-                               time_label=time_label_fun,
-                               colormap=cmap, colorbar=colorbar, hemi=hemi, 
-                               remove_existing=True)
+            brain.add_data(data, fmin, fmax, mid=fmid, center=center,
+                           transparent=transparent, colormap=colormap, 
+                           time=src_df.index.levels[1].values, 
+                           time_label=time_label_fun,
+                           colorbar=colorbar, hemi=hemi, 
+                           remove_existing=True)
             
-        # scale colormap
-        if not colormap == 'divtrans':
-            if threshold > 0:
-                scale_pts[0] = threshold
-            brain.scale_data_colormap(fmin=scale_pts[0], fmid=scale_pts[1],
-                                      fmax=scale_pts[2], transparent=transparent)
-        
         # set time (index) to display
         if initial_time is not None:
             brain.set_time(initial_time)

@@ -16,8 +16,8 @@ from surfer import Brain
 figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 
-#%% selecting the base measure and result
-measure = 'mu_p_large'
+#%% selecting the clustering measure and result
+measure = 'mlog10p'
 
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, move_dist, 
 # sum_dot_y, constregs=0 for 1st dot, 
@@ -48,18 +48,24 @@ clusters = ss.get_fdrcorr_clusters(basefile, regressors, measure, threshold,
 
 #%% load specific regressors
 regressors = ['dot_x', 'dot_y', 'accev']
-show_measure = 'mu_mean'
-r_name = 'accev'
+show_measure = 'absmean'
+r_name = 'dot_x'
+
+use_basefile = show_measure in ss.basefile_measures
 
 src_df_masked = pd.concat(
-        [ss.load_src_df(basefile, reg, clusters) for reg in regressors],
+        [ss.load_src_df(basefile, reg, clusters, use_basefile) 
+         for reg in regressors],
         keys=regressors, names=['regressor', 'label', 'time'])
 
 times = src_df_masked.index.levels[2]
 
+if show_measure not in src_df_masked.columns:
+    ss.add_measure(src_df_masked, show_measure)
+
 # flip sign of all non-nan values in accev for which there is a nan value
-# in dot_x 100 ms later - these are the effects that cannot be explained by the
-# correlation of accev with the dot_x of the previous dot
+# in dot_x 100 ms later - these are the effects that are only present in 
+# accumulated evidence, but not in dot_x
 fliptimes = times[times <= times[-1]-100]
 accevvals = src_df_masked.loc[('accev', slice(None), fliptimes), show_measure]
 dotxvals = src_df_masked.loc[('dot_x', slice(None), fliptimes+100), show_measure]
@@ -68,34 +74,36 @@ flip[dotxvals.isnull().values] = -1
 src_df_masked.loc[('accev', slice(None), fliptimes), show_measure] = accevvals * flip
 
 if show_measure == 'consistency':
-    colorinfo = [0, 0.5, 1, False]
-    colormap = 'coolwarm'
-    clim = {'kind': 'value', 'lims': [0, 0.5, 1]}
+    colorinfo = {'fmin': 0, 'fmid': 0.5, 'fmax': 1, 'transparent': False,
+                 'colormap': 'coolwarm'}
     
     x_times = [400]
 else:
     if r_name == 'dot_x':
-        colorinfo = [src_df_masked.loc[r_name, show_measure].min(),
-                     src_df_masked.loc[r_name, show_measure].median(), 
-                     src_df_masked.loc[r_name, show_measure].max(), 
-                     True]
-        colormap = 'auto'
-        clim = 'auto'
+        colorinfo = {'fmin': src_df_masked.loc[r_name, show_measure].min(),
+                     'fmid': src_df_masked.loc[r_name, show_measure].median(), 
+                     'fmax': src_df_masked.loc[r_name, show_measure].max(), 
+                     'transparent': True,
+                     'colormap': 'auto'}
         
         x_times = [120, 170, 320, 400]
     elif r_name == 'accev':
-        x_times = [20, 120, 230, 300]
+        x_times = [20, 150, 230, 300]
         
-        colormap = 'divtrans'
-        clim = [0, 
-                src_df_masked.loc['dot_x', show_measure].median(), 
-                src_df_masked.loc['dot_x', show_measure].max()]
+        colorinfo = {'fmin': 0,
+                     'fmid': src_df_masked.loc['dot_x', show_measure].median(), 
+                     'fmax': src_df_masked.loc['dot_x', show_measure].max(),
+                     'transparent': True,
+                     'center': 0,
+                     'colormap': 'auto'}
+        
+        colormap = 'auto'
 
 hemi = 'rh'
 
 
 #%% make helper plotting function
-def brain_plot(r_name, viewtimes, brain, colormap='auto', clim='auto'):
+def brain_plot(r_name, viewtimes, brain):
     views = {'rh': ['medial', 'parietal'], 
              'lh': ['parietal', 'medial']}
     
@@ -108,11 +116,7 @@ def brain_plot(r_name, viewtimes, brain, colormap='auto', clim='auto'):
         hemi = brain.geo.keys()[0]
         
     sv.show_labels_as_data(src_df_masked.loc[r_name], show_measure, 
-                           brain, transparent=True, colormap=colormap, 
-                           clim=clim)
-    
-    if colormap != 'divtrans':
-        brain.scale_data_colormap(*colorinfo)
+                           brain, **colorinfo)
     
     filepat = os.path.join(figdir, 'brain_{}_{}_{}_%02d.png'.format(
             show_measure, hemi, r_name))
@@ -124,7 +128,7 @@ def brain_plot(r_name, viewtimes, brain, colormap='auto', clim='auto'):
     
 
 #%% plot effects for selected regressor
-brain = brain_plot(r_name, x_times, hemi, colormap=colormap, clim=clim)
+brain = brain_plot(r_name, x_times, hemi)
 
 
 #%% stitch images from different hemispheres together

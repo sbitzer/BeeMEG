@@ -27,6 +27,10 @@ inf_dir = os.path.join('data', 'inf_results')
 Glasser_sections = pd.read_csv('Glasser2016_sections.csv', index_col=0)
 Glasser_areas = pd.read_csv('Glasser2016_areas.csv', index_col=0)
 
+basefile_measures = ['mean', 'absmean', 'mlog10p', 'std', 'tval', 'abstval']
+
+# the number of subjects with suitable MEG data
+S = 34
 
 def get_Glasser_section(area):
     if area.startswith('??'):
@@ -38,15 +42,49 @@ def get_Glasser_section(area):
     return section
 
 
+def add_measure(second_level, measure):
+    if isinstance(second_level.columns, pd.MultiIndex):
+        for r_name in second_level.columns.levels[1]:
+            if measure == 'tval':
+                second_level[(measure, r_name)] = (
+                          second_level[('mean', r_name)] 
+                        / second_level[('std', r_name)] * np.sqrt(S))
+            elif measure == 'abstval':
+                second_level[(measure, r_name)] = (
+                          second_level[('mean', r_name)] 
+                        / second_level[('std', r_name)] * np.sqrt(S)).abs()
+            elif measure == 'absmean':
+                second_level[(measure, r_name)] = (
+                        second_level[('mean', r_name)].abs())
+            else:
+                raise ValueError("You try to add an unknown basefile measure!")
+    else:
+        if measure == 'tval':
+            second_level[measure] = (
+                      second_level['mean'] 
+                    / second_level['std'] * np.sqrt(S))
+        elif measure == 'abstval':
+            second_level[measure] = (
+                      second_level['mean'] 
+                    / second_level['std'] * np.sqrt(S)).abs()
+        elif measure == 'absmean':
+            second_level[measure] = second_level['mean'].abs()
+        else:
+            raise ValueError("You try to add an unknown basefile measure!")
+
+
 def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99, 
                          bemdir=bem_dir, regressors=None, 
                          exclude=None, verbose=2, return_cdf=False,
-                         use_basefile=False, perm=0):
+                         use_basefile=None, perm=0):
     """Finds a value threshold for a measure corresponding to a given quantile.
     
         Pools values of the measure across all fitted regressors. Then finds 
         the value corresponding to the given quantile.
     """
+    
+    if use_basefile is None:
+        use_basefile = measure in basefile_measures
     
     if regressors is None:
         try:
@@ -74,9 +112,14 @@ def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99,
             if verbose:
                 for r_name in regressors:
                     print('adding ' + r_name)
-            values = (store
-                      .second_level.loc[perm, (measure, list(regressors))]
-                      .values.flatten())
+            second_level = store.second_level.loc[
+                    perm, (slice(None), list(regressors))]
+            
+        if measure not in second_level.columns.levels[0]:
+            add_measure(second_level, measure)
+        
+        values = (second_level.loc[:, (measure, list(regressors))]
+                  .values.flatten())
     else:
         values = np.array([], dtype=float)
         for r_name in regressors:
@@ -130,11 +173,16 @@ def get_time_clusters(measure_series, threshold, cdf):
 
 
 def get_fdrcorr_clusters(basefile, regressors, measure, threshold, cdf, 
-                         fdr_alpha=0.001, use_basefile=False, perm=0):
+                         fdr_alpha=0.001, use_basefile=None, perm=0):
+    
+    if use_basefile is None:
+        use_basefile = measure in basefile_measures
     
     if use_basefile:
         second_level = pd.read_hdf(os.path.join(inf_dir, basefile),
                                    'second_level')
+        if measure not in second_level.columns.levels[0]:
+            add_measure(second_level, measure)
         clusters = [
                 get_time_clusters(second_level.loc[perm, (measure, r_name)],
                                   threshold, cdf)
