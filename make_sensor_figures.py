@@ -377,17 +377,17 @@ fig, ax = plt.subplots(1, figsize=[4, 3])
 
 values = second_level.loc[:, (measure, 'accev')].abs().mean(level='time')
 
-x_times = [20, 120, 230, 300]
+x_times = [20, 150, 230, 300]
 
-line, = ax.plot(values.index, values)
-ax.plot(x_times, values.loc[x_times], '.k', ms=10)
+line, = ax.plot(values.index + 100, values)
+ax.plot(np.array(x_times) + 100, values.loc[x_times], '.k', ms=10)
 ax.set_xlabel('time from dot onset (ms)')
 if measure == 'mu_mean':
     ax.set_ylabel('average posterior mu')
 elif measure == 'mean':
     ax.set_ylabel('average absolute beta')
     for p in range(1, 3):
-        ax.plot(values.index, 
+        ax.plot(values.index + 100, 
                 second_level_perms.loc[p, (measure, 'dot_x')].abs().mean(level='time'),
                 ':', color=line.get_color(), lw=1)
 ax.set_title('accumulated evidence', fontdict={'fontsize': 12})
