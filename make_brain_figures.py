@@ -5,9 +5,10 @@ Created on Thu Jul  6 16:53:11 2017
 
 @author: bitzer
 """
-
+from __future__ import print_function
 import source_visualisations as sv
 import source_statistics as ss
+import numpy as np
 import pandas as pd
 import os
 
@@ -69,8 +70,21 @@ if show_measure not in src_df_masked.columns:
 fliptimes = times[times <= times[-1]-100]
 accevvals = src_df_masked.loc[('accev', slice(None), fliptimes), show_measure]
 dotxvals = src_df_masked.loc[('dot_x', slice(None), fliptimes+100), show_measure]
-flip = pd.np.ones(dotxvals.size)
+flip = np.ones(dotxvals.size)
 flip[dotxvals.isnull().values] = -1
+print('number of flips = %d' % np.sum(flip < 0))
+# additionally flip all non-nan values for which the sign of the effect differs
+# note that the meaning of accev is such that its sign is flipped with respect
+# to dot_x (dot_x is large for evidence for right while accev measures evidence
+# for left), this means that you should only those effects are different whose
+# signs are actually equal
+signdiff = (
+          np.sign(src_df_masked.loc[('accev', slice(None), fliptimes), 
+                                    'mean'].values) 
+        - np.sign(src_df_masked.loc[('dot_x', slice(None), fliptimes+100), 
+                                    'mean'].values))
+flip[signdiff == 0] = -1
+print('number of flips with signdiff = %d' % np.sum(flip < 0))
 src_df_masked.loc[('accev', slice(None), fliptimes), show_measure] = accevvals * flip
 
 if show_measure == 'consistency':
@@ -80,9 +94,9 @@ if show_measure == 'consistency':
     x_times = [400]
 else:
     if r_name == 'dot_x':
-        colorinfo = {'fmin': src_df_masked.loc[r_name, show_measure].min(),
-                     'fmid': src_df_masked.loc[r_name, show_measure].median(), 
-                     'fmax': src_df_masked.loc[r_name, show_measure].max(), 
+        colorinfo = {'fmin': src_df_masked.loc[r_name, show_measure].abs().min(),
+                     'fmid': src_df_masked.loc[r_name, show_measure].abs().median(), 
+                     'fmax': src_df_masked.loc[r_name, show_measure].abs().max(), 
                      'transparent': True,
                      'colormap': 'auto'}
         
@@ -91,8 +105,8 @@ else:
         x_times = [20, 150, 230, 300]
         
         colorinfo = {'fmin': 0,
-                     'fmid': src_df_masked.loc['dot_x', show_measure].median(), 
-                     'fmax': src_df_masked.loc['dot_x', show_measure].max(),
+                     'fmid': src_df_masked.loc['dot_x', show_measure].abs().median(), 
+                     'fmax': src_df_masked.loc['dot_x', show_measure].abs().max(),
                      'transparent': True,
                      'center': 0,
                      'colormap': 'auto'}
@@ -129,6 +143,18 @@ def brain_plot(r_name, viewtimes, brain):
 
 #%% plot effects for selected regressor
 brain = brain_plot(r_name, x_times, hemi)
+
+
+#%% list the shown values
+def list_effects(time):
+    effects = pd.DataFrame(
+            src_df_masked.loc[(r_name, slice(None), time), show_measure]
+            .dropna().sort_values())
+    effects.reset_index(level='label', inplace=True)
+    effects.reset_index(drop=True, inplace=True)
+    effects['region'] = list(map(ss.get_Glasser_section, effects.label))
+    
+    return effects.sort_values(show_measure)
 
 
 #%% stitch images from different hemispheres together
