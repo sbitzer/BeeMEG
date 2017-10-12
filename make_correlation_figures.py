@@ -14,6 +14,7 @@ import seaborn as sns
 import regressors
 import os
 import gc
+import GPy
 
 figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
@@ -128,35 +129,119 @@ fig.savefig(os.path.join(figdir, 'correlation_%s_%s.png' % (area, r_name)),
             dpi=300)
 
 
-#%% compare correlations of regressors at one time point
+#%% plot helper
+def plot_gp_result(ax, xpred, gpm, color, label, xx=None):
+    if xx is None:
+        xx = xpred
+        
+    gpmean, gpvar = gpm.predict_noiseless(xpred)
+    
+    gpmean = gpmean[:, 0]
+    gpstd = np.sqrt(gpvar[:, 0])
+    
+    lw = plt.rcParams["lines.linewidth"] * 1.5
+    
+    # Draw the regression line and confidence interval
+    ax.plot(xx, gpmean, color=color, lw=lw, label=label)
+    ax.fill_between(xx[:, 0], gpmean - 2 * gpstd, gpmean + 2 * gpstd, 
+                    facecolor=color, alpha=.15)
+    
+
+def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None, 
+              line_kws=None, scatter_kws=None, xrange=[-1.5, 1.5]):
+    gpm = gpm = GPy.models.SparseGPRegression(
+            rdata[r_name].values[:, None], 
+            rdata[label].values[:, None], 
+            Z=np.linspace(-1.5, 1.5, 15)[:, None])
+    gpm.optimize()
+    
+    xpred = np.linspace(*xrange, 200)[:, None]
+    
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    # plot regression function
+    plot_gp_result(ax, xpred, gpm, line_kws['color'], line_kws['label'])
+    
+    # scatterplot
+    bin_edges = np.linspace(*xrange, x_bins+1)
+    binx = (bin_edges[:-1] + bin_edges[1:]) / 2
+    ax = sns.regplot(r_name, label, rdata, x_estimator=np.mean, x_bins=binx, 
+                     ax=ax, scatter_kws={'color': color}, fit_reg=False)
+    
+    return gpm
+
+
+#%% compare correlations of regressors at one time point and 
+#  plot motor preparation aligned to time of response
 time = loadtimes[-1]
 mototimes = time/1000 + (dots - 1) * 0.1
 
 colors = sns.cubehelix_palette(3, start=0, rot=0.8, light=0.8, dark=0.2)
 
 fig, axes = plt.subplots(1, 2, sharex=False, sharey=True, figsize=[7.5, 4.5])
+figm, axm = plt.subplots(1, figsize=[5, 4.5])
+
+choices = pd.concat([regressors.subject_trial.response.loc[subjects]] * dots.size,
+                    keys=dots, names=['dot', 'subject', 'trial'])
+choices = choices.reorder_levels(['subject', 'trial', 'dot']).sort_index()
+rts = pd.concat([regressors.subject_trial.RT.loc[subjects]] * dots.size,
+                keys=dots, names=['dot', 'subject', 'trial'])
+rts = rts.reorder_levels(['subject', 'trial', 'dot']).sort_index()
 
 df = pd.concat([data.loc[time], reg], axis=1)
 df['motoresp'] = regressors.motoresp_lin(mototimes).loc[subjects].values
 
-leglabels = ['x-coordinate', 'sum of x', 'linear rise']
+leglabels = ['motor' ,'momentary', 'accumulated']
+
+select_contra = True
+select_early = False
 
 for hemi, ax in zip(['L', 'R'], axes):
+    print('plotting hemisphere %s ...' % hemi, flush=True)
     label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
     
-    for r_name, color, leglabel in zip(['dot_x', 'sum_dot_x', 'motoresp'], 
+    for r_name, color, leglabel in zip(['motoresp', 'dot_x', 'sum_dot_x'], 
                                        colors, leglabels):
-        rdata = df[[label, r_name]]
+        rdata = df[[label, r_name]].copy()
+        datatime = ((rdata.index.get_level_values('dot').values - 1) * 0.1 
+                    + time / 1000)
+        select = np.ones_like(rdata[r_name], dtype=bool)
         if hemi == 'L':
-            rdata = rdata[rdata[r_name] >= 0]
+            if select_contra:
+                select = select & (choices == 1.0)
+#            rdata = rdata[rdata[r_name] >= 0]
         else:
-            rdata = rdata[rdata[r_name] <= 0]
-        rdata[r_name] = (rdata[r_name] - rdata[r_name].mean()) / rdata[r_name].std()
+#            rdata = rdata[rdata[r_name] <= 0]
+            if select_contra:
+                select = select & (choices == -1.0)
+
+        if select_early:
+            select = select & ((rts - datatime) > 0.5)
+        rdata = rdata[select]
+        rmean = rdata[r_name].mean()
+        rstd = rdata[r_name].std()
+        rdata[r_name] = (rdata[r_name] - rmean) / rstd
         
-        ax = sns.regplot(r_name, label, rdata, x_estimator=np.mean, 
-                           x_bins=7, ax=ax, 
-                           line_kws={'color': color, 'label': leglabel},
-                           scatter_kws={'color': color})
+#        regplot = sns.regplot
+        regplot = gpregplot
+        gpm = regplot(r_name, label, rdata, x_estimator=np.mean, x_bins=8, 
+                      ax=ax, line_kws={'color': color, 'label': leglabel},
+                      scatter_kws={'color': color})
+        
+        if r_name == 'motoresp':
+            if hemi == 'L':
+                xpred = np.linspace(-1.5, 1.5, 200)[:, None]
+                rttime = (xpred * rstd + rmean - 1) * regressors.maxrt
+                gpcol = color
+            else:
+                xpred = np.linspace(1.5, -1.5, 200)[:, None]
+                rttime = (-(xpred * rstd + rmean) - 1) * regressors.maxrt
+                # make color a bit darker
+                gpcol = 0.7 * np.array(gpcol)
+            
+            plot_gp_result(axm, xpred, gpm, gpcol, hemi, xx=rttime)
+            
     
     ax.set_xlabel('normalised regressor value')
     ax.set_title(hemi)
@@ -165,7 +250,22 @@ for hemi, ax in zip(['L', 'R'], axes):
     else:
         ax.set_ylabel('')
         ax.legend()
-        
+
+axm.set_xlabel('time from response (s)')
+axm.set_ylabel('normalised mean currents in area %s' % area)
+axm.plot([0, 0], axm.get_ylim(), ':k', label='time of response')
+axm.legend()
+
+figm.subplots_adjust(top=0.95, right=0.95, left=0.15)
+
+contrastr = {True: '_contra', False: ''}
+earlystr = {True: '_early', False: ''}
+fname = os.path.join(figdir, 'motoprep_signal_%s_%d%s%s.png' % (
+        area, time, contrastr[select_contra], earlystr[select_early]))
+figm.savefig(fname, dpi=300)
+
 fig.subplots_adjust(top=.92, right=.96, wspace=.12)
-fig.savefig(os.path.join(figdir, 'correlation_comparison_%s_%d.png' % (area, time)), 
-            dpi=300)
+fname = os.path.join(figdir, 'correlation_comparison_%s_%d%s%s.png' % (
+        area, time, contrastr[select_contra], earlystr[select_early]))
+fig.savefig(fname, dpi=300)
+
