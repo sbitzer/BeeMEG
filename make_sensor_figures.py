@@ -398,24 +398,30 @@ fig.savefig(os.path.join(figdir, 'av_mu_mean_source_accev.png'),
 
 
 #%% example time courses for accev
-fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
+labels = ['R_v23ab_ROI-rh', 'R_4_ROI-rh']
+
+fig, axes = plt.subplots(1, len(labels), sharex=True, sharey=True, 
+                         figsize=[7.5, 3])
 
 r_name = 'accev'
+
+if r_name == 'accev':
+    t_off = 100
+else:
+    t_off = 0
 
 print(second_level.loc[:, (measure, r_name)].abs().mean(level='label')
       .sort_values(ascending=False).head(10))
 
-labels = ['R_v23ab_ROI-rh', 'R_4_ROI-rh']
-
 for ax, label in zip(axes, labels):
-    l, l1 = plot_single_source_signal(r_name, label, ax);
+    l, l1 = plot_single_source_signal(r_name, label, ax, t_off);
     xl = ax.get_xlim()
     ax.plot(xl, np.r_[0, 0], ':k')
     ax.set_xlabel('time from dot onset (ms)')
     ax.set_ylabel('beta-values')
     ax.set_title('accumulated evidence (%s-%s)' % (label[0], label[2:-7]))
 
-ax.set_xlim(second_level.index.levels[1][[0, -1]])
+ax.set_xlim(second_level.index.levels[1][[0, -1]] + t_off)
 
 ax.legend([l, l1], ['single subjects', 'estimated mean']);
 
