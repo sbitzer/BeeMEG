@@ -15,4 +15,3 @@ $wb -label-resample $outdir/Q1-Q6_RelatedParcellation210.L.CorticalAreas_dil_Col
 # convert into freesurfer annot-file
 mris_convert --annot $outdir/left.fsaverage164.label.gii $meshdir/fs_L/fs_L-to-fs_LR_fsaverage.L_LR.spherical_std.164k_fs_L.surf.gii $outdir/lh.HCP-MMP1.annot
 
-read -p "Enter to close ..." response
