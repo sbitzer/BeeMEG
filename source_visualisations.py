@@ -175,6 +175,24 @@ def make_stc(srcfile, measure, r_name=None, src_df=None, transform=None,
     return stc
 
 
+def extract_hemi_data(src_series, hemi):
+    assert type(src_series) is pd.Series
+    
+    data = src_series[src_series.index.get_level_values('label').map(
+            lambda s: s[0] == hemi[0].upper()).values].copy()
+    
+    data.index.set_levels(data.index.levels[0].map(lambda x: int(x[-6:])), 
+                          'label', inplace=True)
+    
+    data = data.unstack('time')
+    
+    data.index.name = 'vertex'
+    data.sort_index(inplace=True)
+    data.sort_index(axis=1, inplace=True)
+    
+    return data
+
+
 if sys.version_info < (3,):
     def make_movie(stc, hemi='lh', td=10, smoothing_steps=5, colvals=None):
         brain = stc.plot(subject='fsaverage', surface='inflated', hemi=hemi, 
@@ -197,6 +215,73 @@ if sys.version_info < (3,):
         
         return brain
     
+    
+    def show_label_vertices(src_df, brain, measure=None, parc='HCPMMP1', 
+                            fmin=None, fmid=None, fmax=None, center=None, 
+                            transparent=True, colormap='auto', 
+                            smoothing_steps=5, initial_time=None, 
+                            colorbar=True, addlabels=True, label_alpha=0.5):
+        """Shows single vertex effects of (a subset of) areas.
+        
+        src_df has either index with levels [vertex label, time], or an index
+        only holding vertex labels; columns contain different measures of the 
+        potential effects, or only a single column exists
+        """
+        if measure is None:
+            if type(src_df) is pd.Series:
+                src_df = src_df.copy()
+            else:
+                if src_df.shape[1] > 1:
+                    raise ValueError("If no measure is given for selection, "
+                                     "the src_df must have only one column")
+                else:
+                    src_df = src_df.iloc[:, 0].copy()
+        else:
+            src_df = src_df[measure].copy()
+        
+        if src_df.index.nlevels == 1:
+            # add the time level
+            if initial_time is None:
+                initial_time = 0
+            
+            src_df.index = pd.MultiIndex.from_arrays(
+                    [src_df.index, np.full_like(src_df.index, initial_time)],
+                    names=['label', 'time'])
+        
+        # only add labels, when this is desired by the user and when there are
+        # no labels yet
+        addlabels = (len(brain._label_dicts) == 0) and addlabels
+        
+        if addlabels:
+            lnames = src_df.index.levels[0].map(lambda l: l[:-7]).unique()
+        
+        for hemi in brain.geo.keys():
+            data = extract_hemi_data(src_df, hemi)
+            
+            if data.columns.max() > 100:
+                time_label_fun = lambda x: '%4d ms' % x
+            else:
+                time_label_fun = lambda x: '%4d ms' % (x * 1000)
+            
+            brain.add_data(
+                    data, vertices=data.index, hemi=hemi, 
+                    smoothing_steps=smoothing_steps, initial_time=initial_time,
+                    time=data.columns, time_label=time_label_fun,
+                    min=fmin, mid=fmid, max=fmax, center=center, 
+                    transparent=transparent, colormap=colormap, 
+                    colorbar=colorbar)
+            
+            if addlabels:
+                labels = mne.read_labels_from_annot('fsaverage', parc=parc, 
+                                                    hemi=hemi)
+                
+                hemilnames = lnames[list(lnames.map(
+                        lambda s: s[0] == hemi[0].upper()).values)]
+                for label in labels:
+                    if label.name in hemilnames:
+                        brain.add_label(label, borders=True, hemi=hemi, 
+                                        alpha=label_alpha)
+        
     
     def show_labels_as_data(src_df, measure, brain, labels=None, transform=None,
                             parc='HCPMMP1', fmin=None, fmid=None, fmax=None, 
