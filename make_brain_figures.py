@@ -17,9 +17,7 @@ from surfer import Brain
 figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 
-#%% selecting the clustering measure and result
-measure = 'mlog10p'
-
+#%% selecting the result
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, move_dist, 
 # sum_dot_y, constregs=0 for 1st dot, 
 # label_tc normalised across trials, times and subjects
@@ -31,20 +29,28 @@ measure = 'mlog10p'
 # label_tc normalised across trials, times and subjects
 basefile = 'source_sequential_201709061827.h5'
 
-alpha = 0.05
+
+#%%
+regressors = ['dot_x', 'dot_y', 'accev']
+fdr_alpha = 0.01
+
+clusters = ss.get_fdrcorr_clusters(basefile, regressors, fdr_alpha, 
+                                   use_basefile=True)
 
 
-#%% get threshold for dot regressors of interest
-regressors = ['dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'accev', 'sum_dot_y_prev']
-
-threshold, measure_cdf = ss.find_slabs_threshold(
-    basefile, measure, quantile=1-alpha, regressors=regressors, 
-    verbose=1, return_cdf=True)
-
-
-#%% identify significant clusters
-clusters = ss.get_fdrcorr_clusters(basefile, regressors, measure, threshold, 
-                                   measure_cdf, fdr_alpha=0.001)
+#%% previous multiple comparison corrected clusters based on first finding 
+#  temporal clusters and then FDR-correcting their estimated pvals
+#measure = 'mlog10p'
+#alpha = 0.05
+#
+#regressors = ['dot_x', 'dot_y', 'abs_dot_x', 'abs_dot_y', 'accev', 'sum_dot_y_prev']
+#
+#threshold, measure_cdf = ss.find_slabs_threshold(
+#    basefile, measure, quantile=1-alpha, regressors=regressors, 
+#    verbose=1, return_cdf=True)
+#
+#clusters = ss.get_fdrcorr_clusters(basefile, regressors, 0.001, 
+#                                   measure, threshold, measure_cdf)
 
 
 #%% load specific regressors

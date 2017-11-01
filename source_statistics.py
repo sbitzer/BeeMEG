@@ -15,6 +15,7 @@ import os
 import seaborn as sns
 from scipy.interpolate import interp1d
 import mne
+from warnings import warn
 
 if os.name == 'posix':
     subjects_dir = 'mne_subjects'
@@ -27,7 +28,8 @@ inf_dir = os.path.join('data', 'inf_results')
 Glasser_sections = pd.read_csv('Glasser2016_sections.csv', index_col=0)
 Glasser_areas = pd.read_csv('Glasser2016_areas.csv', index_col=0)
 
-basefile_measures = ['mean', 'absmean', 'mlog10p', 'std', 'tval', 'abstval']
+basefile_measures = ['mean', 'absmean', 'mlog10p', 'std', 'tval', 'abstval',
+                     'mlog10p_fdr', 'p_fdr']
 
 # the number of subjects with suitable MEG data
 S = 34
@@ -56,6 +58,14 @@ def add_measure(second_level, measure):
             elif measure == 'absmean':
                 second_level[(measure, r_name)] = (
                         second_level[('mean', r_name)].abs())
+            elif measure == 'mlog10p_fdr':
+                _, pval = mne.stats.fdr_correction(
+                        10**(-second_level[('mlog10p', r_name)]), 0.01)
+                second_level[(measure, r_name)] = -np.log10(pval)
+            elif measure == 'p_fdr':
+                _, pval = mne.stats.fdr_correction(
+                        10**(-second_level[('mlog10p', r_name)]), 0.01)
+                second_level[(measure, r_name)] = pval
             else:
                 raise ValueError("You try to add an unknown basefile measure!")
     else:
@@ -69,6 +79,14 @@ def add_measure(second_level, measure):
                     / second_level['std'] * np.sqrt(S)).abs()
         elif measure == 'absmean':
             second_level[measure] = second_level['mean'].abs()
+        elif measure == 'mlog10p_fdr':
+                _, pval = mne.stats.fdr_correction(
+                        10**(-second_level['mlog10p']), 0.01)
+                second_level[measure] = -np.log10(pval)
+        elif measure == 'p_fdr':
+                _, pval = mne.stats.fdr_correction(
+                        10**(-second_level['mlog10p']), 0.01)
+                second_level[measure] = pval
         else:
             raise ValueError("You try to add an unknown basefile measure!")
 
@@ -151,7 +169,7 @@ def find_slabs_threshold(basefile, measure='mu_p_large', quantile=0.99,
         return qval
     
     
-def get_time_clusters(measure_series, threshold, cdf):
+def get_time_clusters(measure_series, threshold, cdf=None):
     
     clusters = []
     
@@ -162,7 +180,11 @@ def get_time_clusters(measure_series, threshold, cdf):
         for key, group in itertools.groupby(label_tc >= threshold):
             length = sum(1 for _ in group)
             if key == True:
-                logps = np.log10(1 - cdf(label_tc.values[start : start+length]))
+                if cdf is None:
+                    logps = label_tc.values[start : start+length]
+                else:
+                    logps = np.log10(
+                            1 - cdf(label_tc.values[start : start+length]))
                 clusters.append([label, label_tc.index[start], 
                                  label_tc.index[start+length-1], logps.sum()])
                 
@@ -172,19 +194,31 @@ def get_time_clusters(measure_series, threshold, cdf):
                         columns=['label', 'start_t', 'end_t', 'log10p'])
 
 
-def get_fdrcorr_clusters(basefile, regressors, measure, threshold, cdf, 
-                         fdr_alpha=0.001, use_basefile=None, perm=0):
+def get_fdrcorr_clusters(basefile, regressors, fdr_alpha, measure=None, 
+                         threshold=None, cdf=None, use_basefile=None, perm=0):
     
     if use_basefile is None:
         use_basefile = measure in basefile_measures
     
+    if threshold is None:
+        threshold = -np.log10(fdr_alpha)
+        if measure is not None:
+            warn("Specific measure was given, but no threshold. Will ignore "
+                 "measure and cdf and compute clusters directly based on "
+                 "FDR-corrected p-values.")
+        measure = 'mlog10p_fdr'
+        cdf = None
+    
     if use_basefile:
         second_level = pd.read_hdf(os.path.join(inf_dir, basefile),
                                    'second_level')
+        second_level = second_level.loc[perm]
+        
         if measure not in second_level.columns.levels[0]:
             add_measure(second_level, measure)
+        
         clusters = [
-                get_time_clusters(second_level.loc[perm, (measure, r_name)],
+                get_time_clusters(second_level.loc[:, (measure, r_name)],
                                   threshold, cdf)
                 for r_name in regressors]
     else:
@@ -198,9 +232,18 @@ def get_fdrcorr_clusters(basefile, regressors, measure, threshold, cdf,
     clusters = pd.concat(clusters, keys=regressors, 
                          names=['regressor', 'cluster'])
     
-    reject, pval = mne.stats.fdr_correction(10**clusters.log10p, fdr_alpha)
-    clusters['pval_corrected'] = pval
-    clusters = clusters[reject]
+    # if clusters were defined directly based on FDR-correct p-values
+    if cdf is None:
+        assert measure == 'mlog10p_fdr'
+        # get_time_clusters returns the sum of mlog10p-values in the cluster
+        # so these need to be multiplied by -1 to get log10p
+        clusters['log10p'] = -clusters.log10p
+        clusters['pval_corrected'] = 10 ** (clusters.log10p)
+    # if clusters were defined based on an empirical cdf
+    else:
+        reject, pval = mne.stats.fdr_correction(10**clusters.log10p, fdr_alpha)
+        clusters['pval_corrected'] = pval
+        clusters = clusters[reject]
     
     try:
         clusters['region'] = clusters.label.apply(get_Glasser_section)
