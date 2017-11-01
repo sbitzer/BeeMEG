@@ -48,7 +48,7 @@ trialregs_dot = 0
 # source data to use
 
 # label mode = mean
-srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
+#srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
 
 # label mode = mean_flip
 #srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
@@ -58,6 +58,9 @@ srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
 
 # label mode = (abs) max
 #srcfile = 'source_epochs_allsubs_HCPMMP1_201706271717.h5'
+
+# label mode= None, lselection=pre-motor and motor areas, window=[0.3, 0.9]
+srcfile = 'source_epochs_allsubs_HCPMMP1_201710231731.h5'
 
 srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
 
@@ -267,7 +270,7 @@ second_level = pd.DataFrame([],
         index=pd.MultiIndex.from_product([np.arange(nperm+1), 
               srclabels, times[:tendi+1]], 
               names=['permnr', 'label', 'time']), 
-        columns=pd.MultiIndex.from_product([['mean', 'std', 'mlog10p'], 
+        columns=pd.MultiIndex.from_product([['mean', 'std', 'tval', 'mlog10p'], 
               DM.columns], names=['measure', 'regressor']), dtype=np.float64)
 second_level.sort_index(axis=1, inplace=True)
 
@@ -341,7 +344,9 @@ for perm in np.arange(nperm+1):
                     params.mean().values)
             second_level.loc[(perm, label, t0), ('std', slice(None))] = (
                     params.std().values)
-            _, pvals = ttest_1samp(params.values, 0, axis=0)
+            tvals, pvals = ttest_1samp(params.values, 0, axis=0)
+            second_level.loc[(perm, label, t0), ('tval', slice(None))] = (
+                tvals)
             second_level.loc[(perm, label, t0), ('mlog10p', slice(None))] = (
                     -np.log10(pvals))
             

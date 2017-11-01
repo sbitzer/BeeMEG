@@ -11,6 +11,7 @@ import mne
 import helpers
 import pandas as pd
 import numpy as np
+import source_statistics as ss
 
 
 #%% options
@@ -25,7 +26,7 @@ sfreq = 100
 hfreq = sfreq
 
 # time window within an epoch to consider
-window = [0, 0.9]
+window = [0.3, 0.9]
 
 # chtype=True for all MEG-channels, chtype='mag' for magnetometers
 chtype = True
@@ -52,11 +53,15 @@ parc = 'HCPMMP1'
 
 # specific labels that should be stored, all others are discarded,
 # use empty list to indicate that all labels should be stored
-lselection = []
+sections = [6, 8]
+anames = ss.Glasser_areas[ss.Glasser_areas['main section'].apply(
+        lambda r: r in sections)]['area name']
+lselection = (  list(anames.apply(lambda n: 'L_%s_ROI-lh' % n))
+              + list(anames.apply(lambda n: 'R_%s_ROI-rh' % n)))
 
 # set to None to keep original source points, 
 # otherwise see MNE's extract_label_time_course for available modes
-label_mode = 'mean'
+label_mode = None
 
 options = pd.Series({'chtype': chtype, 'sfreq': sfreq, 'hfreq': hfreq, 
                      'method': method, 'fwd_surf_ori': fwd_surf_ori,
