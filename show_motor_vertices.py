@@ -86,15 +86,35 @@ sv.show_label_vertices(src_df, brain, measure, initial_time=400,
 
 
 #%% save figures
-files = {}
-for hemi, view in views.iteritems():
-    brain.show_view(*view)
-    file = os.path.join(figdir, 'motor_vertices_%s_%s_%s.png' 
-                        % (r_name, measure, hemi))
-    files[hemi] = file
-    brain.save_image(file, antialiased=True)
+#times = [400]
+times = src_df.index.levels[1]
+
+outfiles = {}
+for time in times:
+    brain.set_time(time)
     
-# stitch them together
-outfile = os.path.join(figdir, 'motor_vertices_%s_%s.png' % (r_name, measure))
-os.system("montage -tile 2x1 -geometry +0+0 %s %s" % (
-        ' '.join([files['lh'], files['rh']]), outfile))
+    files = {}
+    for hemi, view in views.iteritems():
+        brain.show_view(*view)
+        file = os.path.join(figdir, 'motor_vertices_%s_%s_%s_%d.png' 
+                            % (r_name, measure, hemi, time))
+        files[hemi] = file
+        brain.save_image(file, antialiased=True)
+        
+    # stitch them together
+    outfiles.append(os.path.join(figdir, 'motor_vertices_%s_%s_%d.png' % 
+                                 (r_name, measure, time)))
+    os.system("montage -tile 2x1 -geometry +0+0 %s %s" % (
+        ' '.join([files['lh'], files['rh']]), outfiles[-1]))
+
+if len(times) > 1:
+    import shutil
+    for ind, file in enumerate(outfiles):
+        shutil.copyfile(file, 'tmp_%d.png' % (ind+1))
+    
+    mvfile = os.path.join(figdir, 'motor_vertices_%s_%s.mp4' % 
+                          (r_name, measure))
+    os.system('avconv -f image2 -r 2 -i tmp_%%d.png -vcodec mpeg4 -y %s' 
+              % mvfile)
+    
+    os.system('rm tmp_*.png')
