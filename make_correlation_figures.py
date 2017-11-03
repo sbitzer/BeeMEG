@@ -146,14 +146,28 @@ def plot_gp_result(ax, xpred, gpm, color, label, xx=None):
     ax.fill_between(xx[:, 0], gpmean - 2 * gpstd, gpmean + 2 * gpstd, 
                     facecolor=color, alpha=.15)
     
+def fitgp(xvals, data, Z):
+    if data.ndim < 2:
+        data = data[:, None]
+    if xvals.ndim < 2:
+        xvals = xvals[:, None]
+    if Z.ndim < 2:
+        Z = Z[:, None]
+    
+    gpm = GPy.models.SparseGPRegression(xvals, data, Z=Z)
+    
+    # set reasonable initial values
+    gpm.likelihood.variance = data.var()
+    gpm.kern.lengthscale = xvals.std()
+    
+    gpm.optimize()
+    
+    return gpm
+    
 
 def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None, 
               line_kws=None, scatter_kws=None, xrange=[-1.5, 1.5]):
-    gpm = gpm = GPy.models.SparseGPRegression(
-            rdata[r_name].values[:, None], 
-            rdata[label].values[:, None], 
-            Z=np.linspace(-1.5, 1.5, 15)[:, None])
-    gpm.optimize()
+    gpm = fitgp(rdata[r_name], rdata[label], np.linspace(*xrange, 15))
     
     xpred = np.linspace(*xrange, 200)[:, None]
     
@@ -172,15 +186,11 @@ def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None,
     return gpm
 
 
-#%% compare correlations of regressors at one time point and 
-#  plot motor preparation aligned to time of response
+#%% compare correlations for one regressor for all vs. only early time points
 time = loadtimes[-1]
 mototimes = time/1000 + (dots - 1) * 0.1
 
-colors = sns.cubehelix_palette(3, start=0, rot=0.8, light=0.8, dark=0.2)
-
 fig, axes = plt.subplots(1, 2, sharex=False, sharey=True, figsize=[7.5, 4.5])
-figm, axm = plt.subplots(1, figsize=[5, 4.5])
 
 choices = pd.concat([regressors.subject_trial.response.loc[subjects]] * dots.size,
                     keys=dots, names=['dot', 'subject', 'trial'])
@@ -192,17 +202,25 @@ rts = rts.reorder_levels(['subject', 'trial', 'dot']).sort_index()
 df = pd.concat([data.loc[time], reg], axis=1)
 df['motoresp'] = regressors.motoresp_lin(mototimes).loc[subjects].values
 
-leglabels = ['motor' ,'momentary', 'accumulated']
+r_names = np.array(['motoresp', 'dot_x', 'sum_dot_x'])
+colors = sns.cubehelix_palette(3, start=0, rot=0.8, light=0.8, dark=0.2)
 
-select_contra = True
-select_early = False
+# use only trials in which response was to contralateral side
+select_contra = False
+
+# regressor to plot data for
+r_name = 'dot_x'
+r_ind = np.flatnonzero(r_names == r_name)[0]
+r_color = colors[r_ind]
+
+xrange = df[r_name].quantile([0.1, 0.9])
 
 for hemi, ax in zip(['L', 'R'], axes):
     print('plotting hemisphere %s ...' % hemi, flush=True)
     label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
     
-    for r_name, color, leglabel in zip(['motoresp', 'dot_x', 'sum_dot_x'], 
-                                       colors, leglabels):
+    for select_early, selabel in zip([True, False], 
+                                     ['without fast responses', 'all data']):
         rdata = df[[label, r_name]].copy()
         datatime = ((rdata.index.get_level_values('dot').values - 1) * 0.1 
                     + time / 1000)
@@ -218,38 +236,75 @@ for hemi, ax in zip(['L', 'R'], axes):
 
         if select_early:
             select = select & ((rts - datatime) > 0.5)
+            color = 0.7 * np.array(r_color)
+        else:
+            color = r_color
+            
         rdata = rdata[select]
-        rmean = rdata[r_name].mean()
-        rstd = rdata[r_name].std()
-        rdata[r_name] = (rdata[r_name] - rmean) / rstd
         
 #        regplot = sns.regplot
         regplot = gpregplot
         gpm = regplot(r_name, label, rdata, x_estimator=np.mean, x_bins=8, 
-                      ax=ax, line_kws={'color': color, 'label': leglabel},
-                      scatter_kws={'color': color})
+                      ax=ax, line_kws={'color': color, 'label': selabel},
+                      scatter_kws={'color': color}, xrange=xrange)
         
-        if r_name == 'motoresp':
-            if hemi == 'L':
-                xpred = np.linspace(-1.5, 1.5, 200)[:, None]
-                rttime = (xpred * rstd + rmean - 1) * regressors.maxrt
-                gpcol = color
-            else:
-                xpred = np.linspace(1.5, -1.5, 200)[:, None]
-                rttime = (-(xpred * rstd + rmean) - 1) * regressors.maxrt
-                # make color a bit darker
-                gpcol = 0.7 * np.array(gpcol)
-            
-            plot_gp_result(axm, xpred, gpm, gpcol, hemi, xx=rttime)
-            
-    
-    ax.set_xlabel('normalised regressor value')
+    ax.set_xlabel('x-coordinate')
     ax.set_title(hemi)
     if hemi == 'L':
         ax.set_ylabel('normalised mean currents in area %s' % area)
     else:
         ax.set_ylabel('')
         ax.legend()
+        
+fig.subplots_adjust(top=.92, right=.96, wspace=.12)
+
+contrastr = {True: '_contra', False: ''}
+fname = os.path.join(figdir, 'correlation_all_vs_early_%s_%d%s.png' % (
+        area, time, contrastr[select_contra]))
+fig.savefig(fname, dpi=300)
+        
+        
+#%%  plot motor preparation aligned to time of response
+r_name = 'motoresp'
+r_ind = np.flatnonzero(r_names == r_name)[0]
+r_color = colors[r_ind]
+
+xrange = regressors.linprepsig(np.r_[-1.15, 0.15])
+
+figm, axm = plt.subplots(1, figsize=[5, 4.5])
+
+for hemi in ['L', 'R']:
+    print('plotting hemisphere %s ...' % hemi, flush=True)
+    label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
+    
+    rdata = df[[label, r_name]].copy()
+    select = np.ones_like(rdata[r_name], dtype=bool)
+    if hemi == 'L':
+        # select trials which had a right choice
+        select = select & (choices == 1.0)
+        
+        # for right choices the motoresp_lin regressor is positive
+        Z = np.linspace(*xrange, 15)
+        xpred = np.linspace(*xrange, 200)[:, None]
+        rttime = (xpred - 1) * regressors.maxrt
+        color = r_color
+    else:
+        # select trials which had a left choice
+        select = select & (choices == -1.0)
+        
+        # for left choices the motoresp_lin regressor is negative
+        Z = np.linspace(*-xrange, 15)
+        xpred = -np.linspace(*xrange, 200)[:, None]
+        rttime = (-xpred - 1) * regressors.maxrt
+        # make color a bit darker
+        color = 0.7 * np.array(r_color)
+
+    rdata = rdata[select]
+    
+    gpm = fitgp(rdata[r_name], rdata[label], Z)
+    
+    plot_gp_result(axm, xpred, gpm, color, hemi, xx=rttime)
+    
 
 axm.set_xlabel('time from response (s)')
 axm.set_ylabel('normalised mean currents in area %s' % area)
@@ -258,14 +313,6 @@ axm.legend()
 
 figm.subplots_adjust(top=0.95, right=0.95, left=0.15)
 
-contrastr = {True: '_contra', False: ''}
-earlystr = {True: '_early', False: ''}
-fname = os.path.join(figdir, 'motoprep_signal_%s_%d%s%s.png' % (
-        area, time, contrastr[select_contra], earlystr[select_early]))
+fname = os.path.join(figdir, 'motoprep_signal_%s_%d.png' % (
+        area, time))
 figm.savefig(fname, dpi=300)
-
-fig.subplots_adjust(top=.92, right=.96, wspace=.12)
-fname = os.path.join(figdir, 'correlation_comparison_%s_%d%s%s.png' % (
-        area, time, contrastr[select_contra], earlystr[select_early]))
-fig.savefig(fname, dpi=300)
-
