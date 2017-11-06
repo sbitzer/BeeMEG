@@ -20,9 +20,8 @@ from warnings import warn
 # which dot to investigate?
 dots = np.arange(1, 6)
 
-# implements the assumption that in a trial with RT<(dot onset time + rt_thresh)
-# there cannot be an effect of the last considered dot in the MEG signal
-rt_thresh = 0.1
+# excludes data which occured at time points after RT - rt_thresh
+rt_thresh = 0.5
 
 # names of regressors that should enter the GLM
 r_names = ['abs_dot_y', 'abs_dot_x', 'dot_y', 'dot_x', 'intercept', 
@@ -107,10 +106,7 @@ def get_data_times(t0):
 
 
 #%% load trial-level design matrices for all subjects (ith-dot based)
-if 'RT' in r_names:
-    DM = subject_DM.get_trial_DM(dots, r_names=r_names)
-else:
-    DM = subject_DM.get_trial_DM(dots, r_names=r_names+['RT'])
+DM = subject_DM.get_trial_DM(dots, r_names=r_names)
     
 DM = DM.loc(axis=0)[subjects, :]
 
@@ -121,15 +117,8 @@ if 'accsur_pca_%d' % dots[0] in DM.columns:
     snames = ['accsur_pca_%d' % d for d in dots]
     good_trials = np.logical_and(good_trials, 
             np.logical_not(np.any(np.isnan(DM[snames]), axis=1)))
+good_trials = pd.Series(good_trials, index=DM.index)
                          
-# remove trials which had RTs below a threshold (and therefore most likely 
-# cannot have an effect of the last considered dot)
-good_trials = np.logical_and(good_trials, 
-                             DM['RT'] >= helpers.dotdt*(dots.max()-1) + rt_thresh)
-# remove RT from design matrix
-if 'RT' not in r_names:
-    del DM['RT']
-
 # select only the good trials
 DM = DM.loc[good_trials]
 
@@ -138,6 +127,15 @@ DM = DM.loc[good_trials]
 good_trials = pd.concat([good_trials for d in dots], keys=dots, 
                         names=['dot'] + good_trials.index.names)
 good_trials = good_trials.reorder_levels(['subject', 'trial', 'dot']).sort_index()
+
+
+#%% get RTs for later exclusion of data based on closeness to RT
+rts = pd.concat(
+        [subject_DM.regressors.subject_trial.RT.loc[subjects]] * dots.size,
+        keys=dots, names=['dot', 'subject', 'trial'])
+rts = rts.reorder_levels(['subject', 'trial', 'dot']).sort_index()
+
+rts = rts[good_trials]
 
 
 #%% reshape DM to have the dots in rows
@@ -314,11 +312,24 @@ for perm in np.arange(nperm+1):
                 data = epochs.loc[(sub, slice(None), datat)]
                 data = data.loc[good_trials.loc[sub].values]
                 
+                # exclude data points after RT-rt_thresh
+                if rt_thresh is not None:
+                    dottimes = np.tile(datat / 1000, 480)
+                    dottimes = dottimes[good_trials.loc[sub].values]
+                    select = ((rts.loc[sub] - dottimes) > 0.5).values
+                    
+                    data = data[select]
+                
                 for r_name in timeDM.keys():
                     DM.loc[sub, r_name] = timeDM[r_name].loc[t0].loc[sub].values
+                
+                if rt_thresh is None:
+                    DMsubt0 = DM.loc[sub].values
+                else:
+                    DMsubt0 = DM.loc[sub].values[select, :]
         
                 for label in srclabels:
-                    res = sm.OLS(data[label].values, DM.loc[sub].values, 
+                    res = sm.OLS(data[label].values, DMsubt0, 
                                  hasconst=True).fit()
                 
                     first_level.loc[(perm, label, t0), (sub, 'beta', slice(None))] = (

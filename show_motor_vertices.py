@@ -18,7 +18,7 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 
 #%% load data
-r_name = 'dot_x'
+r_name = 'accev'
 measure = 'tval'
 
 # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
@@ -27,14 +27,27 @@ measure = 'tval'
 # label_tc normalised across trials, times and subjects
 basefile = 'source_sequential_201710231824.h5'
 
+# vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
+# data points later than 500 ms before response excluded
+# trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
+# subject-specific normalisation of DM without centering and scaling by std
+# label_tc normalised across trials, times and subjects
+#basefile = 'source_sequential_201711031951.h5'
+
 src_df = ss.load_src_df(basefile, r_name, use_basefile=True)
+ss.add_measure(src_df, 'p_fdr')
 
 
 #%% prepare plotting
-def get_colorinfo(measure, src_df):
+def get_colorinfo(measure, src_df, fdr_alpha=0.01):
+    # find measure value that is the first one with p-value equal or smaller 
+    # than fdr_alpha
+    pdiff = src_df.p_fdr - fdr_alpha
+    fmid = src_df[pdiff <= 0].sort_values('p_fdr')[measure].abs().iloc[-1]
+    
     if measure == 'tval':
-        colorinfo = {'fmin': src_df[measure].abs().quantile(0.5), 
-                     'fmid': src_df[measure].abs().quantile(0.95), 
+        colorinfo = {'fmin': fmid / 2., 
+                     'fmid': fmid, 
                      'fmax': src_df[measure].abs().max(),
                      'center': 0}
         
@@ -89,7 +102,7 @@ sv.show_label_vertices(src_df, brain, measure, initial_time=400,
 #times = [400]
 times = src_df.index.levels[1]
 
-outfiles = {}
+outfiles = []
 for time in times:
     brain.set_time(time)
     
