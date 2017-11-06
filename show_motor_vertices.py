@@ -18,21 +18,25 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 
 #%% load data
-r_name = 'accev'
+r_name = 'dot_x'
 measure = 'tval'
+exclude_late = False
 
-# vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
-# trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
-# subject-specific normalisation of DM without centering and scaling by std
-# label_tc normalised across trials, times and subjects
-basefile = 'source_sequential_201710231824.h5'
-
-# vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
-# data points later than 500 ms before response excluded
-# trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
-# subject-specific normalisation of DM without centering and scaling by std
-# label_tc normalised across trials, times and subjects
-#basefile = 'source_sequential_201711031951.h5'
+if exclude_late:
+    # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
+    # data points later than 500 ms before response excluded
+    # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
+    # subject-specific normalisation of DM without centering and scaling by std
+    # label_tc normalised across trials, times and subjects
+    basefile = 'source_sequential_201711031951.h5'
+    latestr = '_exclate'
+else:
+    # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
+    # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
+    # subject-specific normalisation of DM without centering and scaling by std
+    # label_tc normalised across trials, times and subjects
+    basefile = 'source_sequential_201710231824.h5'
+    latestr = ''
 
 src_df = ss.load_src_df(basefile, r_name, use_basefile=True)
 ss.add_measure(src_df, 'p_fdr')
@@ -109,14 +113,14 @@ for time in times:
     files = {}
     for hemi, view in views.iteritems():
         brain.show_view(*view)
-        file = os.path.join(figdir, 'motor_vertices_%s_%s_%s_%d.png' 
-                            % (r_name, measure, hemi, time))
+        file = os.path.join(figdir, 'motor_vertices_%s_%s_%s_%d%s.png' 
+                            % (r_name, measure, hemi, time, latestr))
         files[hemi] = file
         brain.save_image(file, antialiased=True)
         
     # stitch them together
-    outfiles.append(os.path.join(figdir, 'motor_vertices_%s_%s_%d.png' % 
-                                 (r_name, measure, time)))
+    outfiles.append(os.path.join(figdir, 'motor_vertices_%s_%s_%d%s.png' % 
+                                 (r_name, measure, time, latestr)))
     os.system("montage -tile 2x1 -geometry +0+0 %s %s" % (
         ' '.join([files['lh'], files['rh']]), outfiles[-1]))
 
@@ -125,8 +129,8 @@ if len(times) > 1:
     for ind, file in enumerate(outfiles):
         shutil.copyfile(file, 'tmp_%d.png' % (ind+1))
     
-    mvfile = os.path.join(figdir, 'motor_vertices_%s_%s.mp4' % 
-                          (r_name, measure))
+    mvfile = os.path.join(figdir, 'motor_vertices_%s_%s%s.mp4' % 
+                          (r_name, measure, latestr))
     os.system('avconv -f image2 -r 2 -i tmp_%%d.png -vcodec mpeg4 -y %s' 
               % mvfile)
     
