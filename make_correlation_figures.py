@@ -99,20 +99,26 @@ reg = pd.DataFrame(reg)
 for name in r_names[1:]:
     reg[name] = np.tile(regressors.trial_dot[name].loc[(slice(None), list(dots))].values, subjects.size)
 
+Bx = 8
+
 
 #%% make correlation figure for a single regressor at different times
 r_name = 'dot_x'
 
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 4.5])
 
-colors = sns.cubehelix_palette(len(loadtimes), start=2, rot=.1, light=.75, dark=.25)
+colors = sns.cubehelix_palette(len(loadtimes), start=1.8, rot=0, light=.75, dark=.25)
+
+xrange = reg[r_name].quantile([0.1, 0.9])
+x_bins = np.linspace(*xrange, Bx+1)
+x_bins = (x_bins[:-1] + x_bins[1:]) / 2
 
 for hemi, ax in zip(['L', 'R'], axes):
     for time, color in zip(loadtimes, colors):
         df = pd.concat([data.loc[time], reg], axis=1)
         label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
         grid = sns.regplot(r_name, label, df, x_estimator=np.mean, 
-                           x_bins=7, ax=ax, 
+                           x_bins=x_bins, ax=ax, 
                            line_kws={'color': color, 'label': '%d ms' % time},
                            scatter_kws={'color': color})
     
@@ -203,15 +209,16 @@ df = pd.concat([data.loc[time], reg], axis=1)
 df['motoresp'] = regressors.motoresp_lin(mototimes).loc[subjects].values
 
 r_names = np.array(['motoresp', 'dot_x', 'sum_dot_x'])
-colors = sns.cubehelix_palette(3, start=0, rot=0.8, light=0.8, dark=0.2)
+
+colors = sns.cubehelix_palette(len(loadtimes), start=1.8, rot=0, light=.75, 
+                               dark=.25)
+colors = colors[slice(1, 4, 2)]
 
 # use only trials in which response was to contralateral side
 select_contra = False
 
 # regressor to plot data for
 r_name = 'dot_x'
-r_ind = np.flatnonzero(r_names == r_name)[0]
-r_color = colors[r_ind]
 
 xrange = df[r_name].quantile([0.1, 0.9])
 
@@ -219,8 +226,8 @@ for hemi, ax in zip(['L', 'R'], axes):
     print('plotting hemisphere %s ...' % hemi, flush=True)
     label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
     
-    for select_early, selabel in zip([True, False], 
-                                     ['without fast responses', 'all data']):
+    for select_early, selabel, color in zip(
+            [True, False], ['without fast responses', 'all data'], colors):
         rdata = df[[label, r_name]].copy()
         datatime = ((rdata.index.get_level_values('dot').values - 1) * 0.1 
                     + time / 1000)
@@ -236,9 +243,6 @@ for hemi, ax in zip(['L', 'R'], axes):
 
         if select_early:
             select = select & ((rts - datatime) > 0.5)
-            color = 0.7 * np.array(r_color)
-        else:
-            color = r_color
             
         rdata = rdata[select]
         
@@ -266,14 +270,14 @@ fig.savefig(fname, dpi=300)
         
 #%%  plot motor preparation aligned to time of response
 r_name = 'motoresp'
-r_ind = np.flatnonzero(r_names == r_name)[0]
-r_color = colors[r_ind]
+
+colors = sns.cubehelix_palette(2, start=1.3, rot=0, light=.6, dark=.4)
 
 xrange = regressors.linprepsig(np.r_[-1.15, 0.15])
 
 figm, axm = plt.subplots(1, figsize=[5, 4.5])
 
-for hemi in ['L', 'R']:
+for hemi, color in zip(['L', 'R'], colors):
     print('plotting hemisphere %s ...' % hemi, flush=True)
     label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
     
@@ -287,7 +291,6 @@ for hemi in ['L', 'R']:
         Z = np.linspace(*xrange, 15)
         xpred = np.linspace(*xrange, 200)[:, None]
         rttime = (xpred - 1) * regressors.maxrt
-        color = r_color
     else:
         # select trials which had a left choice
         select = select & (choices == -1.0)
@@ -296,8 +299,6 @@ for hemi in ['L', 'R']:
         Z = np.linspace(*-xrange, 15)
         xpred = -np.linspace(*xrange, 200)[:, None]
         rttime = (-xpred - 1) * regressors.maxrt
-        # make color a bit darker
-        color = 0.7 * np.array(r_color)
 
     rdata = rdata[select]
     
