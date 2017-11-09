@@ -9,6 +9,7 @@ Created on Tue Oct 24 15:13:33 2017
 from __future__ import print_function
 import source_visualisations as sv
 import source_statistics as ss
+import re
 import os
 import mne
 
@@ -18,25 +19,51 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 
 #%% load data
-r_name = 'dot_x'
+r_name = 'response'
 measure = 'tval'
-exclude_late = False
+make_figures = True
 
-if exclude_late:
-    # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
-    # data points later than 500 ms before response excluded
-    # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
-    # subject-specific normalisation of DM without centering and scaling by std
-    # label_tc normalised across trials, times and subjects
-    basefile = 'source_sequential_201711031951.h5'
-    latestr = '_exclate'
+# can be:
+# '' for all first-dot-onset-aligned data
+# 'exclate' for first-dot-onset-aligned data excluding data close to response
+# 'ralign' for response aligned data
+datatype = 'ralign'
+
+is_singledot_regressor = lambda name: (
+           (name in ['entropy', 'trial_time', 'response'])
+        or (re.match(r'.*_\d+$', name) is not None))
+
+basefile = None
+if is_singledot_regressor(r_name):
+    if datatype == 'ralign':
+        # vertices of pre-motor and motor areas, baseline (-0.3, 0), dots 5-7, 
+        # response-aligned in [-200, 50], source GLM, 
+        # subject-specific normalisation of DM without centering and scaling by std
+        # label_tc normalised across trials, times and subjects
+        basefile = 'source_singledot_201711081136.h5'
+    elif datatype == '':
+        # vertices of pre-motor and motor areas, baseline (-0.3, 0), dots 5-7, 
+        # time window 0.7-0.89, source GLM, 
+        # subject-specific normalisation of DM without centering and scaling by std
+        # label_tc normalised across trials, times and subjects
+        basefile = 'source_singledot_201711061631.h5'    
 else:
-    # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
-    # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
-    # subject-specific normalisation of DM without centering and scaling by std
-    # label_tc normalised across trials, times and subjects
-    basefile = 'source_sequential_201710231824.h5'
-    latestr = ''
+    if datatype == 'exclate':
+        # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
+        # data points later than 500 ms before response excluded
+        # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
+        # subject-specific normalisation of DM without centering and scaling by std
+        # label_tc normalised across trials, times and subjects
+        basefile = 'source_sequential_201711031951.h5'
+    elif datatype == '':
+        # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
+        # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
+        # subject-specific normalisation of DM without centering and scaling by std
+        # label_tc normalised across trials, times and subjects
+        basefile = 'source_sequential_201710231824.h5'
+
+if len(datatype) > 0 and not datatype.startswith('_'):
+    datatype = '_' + datatype
 
 src_df = ss.load_src_df(basefile, r_name, use_basefile=True)
 ss.add_measure(src_df, 'p_fdr')
@@ -47,13 +74,23 @@ def get_colorinfo(measure, src_df, fdr_alpha=0.01):
     # find measure value that is the first one with p-value equal or smaller 
     # than fdr_alpha
     pdiff = src_df.p_fdr - fdr_alpha
-    fmid = src_df[pdiff <= 0].sort_values('p_fdr')[measure].abs().iloc[-1]
-    
-    if measure == 'tval':
-        colorinfo = {'fmin': fmid / 2., 
-                     'fmid': fmid, 
-                     'fmax': src_df[measure].abs().max(),
-                     'center': 0}
+    try:
+        fmid = src_df[pdiff <= 0].sort_values('p_fdr')[measure].abs().iloc[-1]
+    except IndexError:
+        print('No FDR-corrected significant effects!')
+        if measure == 'tval':
+            fmin = src_df[measure].abs().min()
+            fmax = src_df[measure].abs().max()
+            colorinfo = {'fmin': fmin, 
+                         'fmid': fmax, 
+                         'fmax': fmax + fmax - fmin,
+                         'center': 0}
+    else:
+        if measure == 'tval':
+            colorinfo = {'fmin': fmid / 2., 
+                         'fmid': fmid, 
+                         'fmax': src_df[measure].abs().max(),
+                         'center': 0}
         
     return colorinfo
 
@@ -98,40 +135,41 @@ brain = Brain('fsaverage', 'both', 'inflated', cortex='low_contrast',
 
 add_motor_labels(brain, src_df)
 
-sv.show_label_vertices(src_df, brain, measure, initial_time=400, 
+sv.show_label_vertices(src_df, brain, measure, 
                        **get_colorinfo(measure, src_df))
 
 
 #%% save figures
-#times = [400]
-times = src_df.index.levels[1]
-
-outfiles = []
-for time in times:
-    brain.set_time(time)
+if make_figures:
+    #times = [400]
+    times = src_df.index.levels[1]
     
-    files = {}
-    for hemi, view in views.iteritems():
-        brain.show_view(*view)
-        file = os.path.join(figdir, 'motor_vertices_%s_%s_%s_%d%s.png' 
-                            % (r_name, measure, hemi, time, latestr))
-        files[hemi] = file
-        brain.save_image(file, antialiased=True)
+    outfiles = []
+    for time in times:
+        brain.set_time(time)
         
-    # stitch them together
-    outfiles.append(os.path.join(figdir, 'motor_vertices_%s_%s_%d%s.png' % 
-                                 (r_name, measure, time, latestr)))
-    os.system("montage -tile 2x1 -geometry +0+0 %s %s" % (
-        ' '.join([files['lh'], files['rh']]), outfiles[-1]))
-
-if len(times) > 1:
-    import shutil
-    for ind, file in enumerate(outfiles):
-        shutil.copyfile(file, 'tmp_%d.png' % (ind+1))
+        files = {}
+        for hemi, view in views.iteritems():
+            brain.show_view(*view)
+            file = os.path.join(figdir, 'motor_vertices_%s_%s_%s_%d%s.png' 
+                                % (r_name, measure, hemi, time, datatype))
+            files[hemi] = file
+            brain.save_image(file, antialiased=True)
+            
+        # stitch them together
+        outfiles.append(os.path.join(figdir, 'motor_vertices_%s_%s_%d%s.png' % 
+                                     (r_name, measure, time, datatype)))
+        os.system("montage -tile 2x1 -geometry +0+0 %s %s" % (
+            ' '.join([files['lh'], files['rh']]), outfiles[-1]))
     
-    mvfile = os.path.join(figdir, 'motor_vertices_%s_%s%s.mp4' % 
-                          (r_name, measure, latestr))
-    os.system('avconv -f image2 -r 2 -i tmp_%%d.png -vcodec mpeg4 -y %s' 
-              % mvfile)
-    
-    os.system('rm tmp_*.png')
+    if len(times) > 1:
+        import shutil
+        for ind, file in enumerate(outfiles):
+            shutil.copyfile(file, 'tmp_%d.png' % (ind+1))
+        
+        mvfile = os.path.join(figdir, 'motor_vertices_%s_%s%s.mp4' % 
+                              (r_name, measure, datatype))
+        os.system('avconv -f image2 -r 2 -i tmp_%%d.png -vcodec mpeg4 -y %s' 
+                  % mvfile)
+        
+        os.system('rm tmp_*.png')
