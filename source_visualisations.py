@@ -258,7 +258,7 @@ if sys.version_info < (3,):
         for hemi in brain.geo.keys():
             data = extract_hemi_data(src_df, hemi)
             
-            if data.columns.max() > 100:
+            if data.columns.max() - data.columns.min() > 100:
                 time_label_fun = lambda x: '%4d ms' % x
             else:
                 time_label_fun = lambda x: '%4d ms' % (x * 1000)
@@ -333,7 +333,7 @@ if sys.version_info < (3,):
                              'sources in data ({})!'.format(len(labels),
                              src_df.index.levels[0].size))
         
-        if values.index.levels[1].max() > 100:
+        if values.index.levels[1].max() - values.index.levels[1].min() > 100:
             time_label_fun = lambda x: '%4d ms' % x
         else:
             time_label_fun = lambda x: '%4d ms' % (x * 1000)
