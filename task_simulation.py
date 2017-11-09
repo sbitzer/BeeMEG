@@ -63,6 +63,10 @@ class Trial(object):
         self.fix = fix
         self.dot = dot
         
+        self.targets.set_visible(False)
+        self.dot.set_visible(False)
+        self.fix.set_visible(False)
+        
         self.targetfix_dur = 7
         
         # trial count
@@ -104,9 +108,11 @@ class Trial(object):
                 elif time == self.dot_onset + 25:
                     self.targets.set_visible(False)
                     self.dot.set_visible(False)
+                    
+        return [self.targets, self.fix, self.dot]
                 
 
 #%% run animation
 trial = Trial(targets, fix, dot)
 anim = FuncAnimation(fig, trial.draw_frame, init_func=trial.start,
-                     frames=np.arange(1, 48), interval=100)
+                     frames=np.arange(1, 48), interval=100, blit=True)
