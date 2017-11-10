@@ -17,6 +17,8 @@ import os
 import gc
 import GPy
 
+figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
+
 
 #%% select data
 # source data file to use
@@ -26,7 +28,7 @@ file = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
 # area that should be investigated
 area = '4'
 
-timeslice = [0, 700]
+timeslice = [0, 890]
 
 normsrc = True
 
@@ -113,7 +115,7 @@ for sub in subjects:
         
 
 #%% plot
-colors = sns.cubehelix_palette(2, start=1.3, rot=0, light=.6, dark=.2)
+colors = sns.cubehelix_palette(2, start=0.9, rot=0, light=.6, dark=.2)
 
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 4.5])
 
@@ -122,11 +124,12 @@ for ax, label in zip(axes, labels):
     lsubs = ax.plot(xpred / 1000, labelpred['mean'], color=colors[0], lw=1)
     
     # compute mean prediction across subjects taking uncertainty into account
-    weights = (  labelpred['std'].values 
-               / labelpred['std'].sum(axis=1).values[:, None])
-    meanpred = (labelpred['mean'] * weights).sum(axis=1)
+    meanpred = labelpred['mean'].mean(axis=1)
+    stdpred = np.sqrt((labelpred['std'] ** 2).sum(axis=1) / subjects.size ** 2)
     
-    lmean, = ax.plot(xpred / 1000, meanpred, color=colors[1], lw=3)
+    lmean, = ax.plot(xpred / 1000, meanpred, color=colors[1], lw=2)
+    ax.fill_between(xpred / 1000, meanpred - 2 * stdpred, 
+                    meanpred + 2 * stdpred, facecolor=colors[1], alpha=.15)
     
     ax.set_title(label[0])
     ax.set_xlabel('time from first dot onset (s)')
@@ -134,3 +137,6 @@ for ax, label in zip(axes, labels):
 ax.legend([lsubs[0], lmean], ['participants', 'mean'])
 axes[0].set_ylabel('normalised mean currents in area %s' % area)
 fig.subplots_adjust(top=0.92, right=0.97, left=0.1, wspace=0.08)
+
+fname = os.path.join(figdir, 'general_contralateral_buildup_%s.png' % area)
+fig.savefig(fname, dpi=300)
