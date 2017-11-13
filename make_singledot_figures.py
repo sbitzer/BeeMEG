@@ -18,7 +18,15 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 #%% load data
 
 # baseline = (-0.3, 0)
-resfile = os.path.join(helpers.resultsdir, 'meg_singledot_201706131051.h5')
+fname = 'meg_singledot_201706131051.h5'
+
+# label mode = mean, baseline (-0.3, 0), dots 3-5, 
+# source GLM, sum_dot_y_prev_3, accev_3, dot_x, dot_y, trial regressors
+# subject-specific normalisation of DM without centering and scaling by std
+# label_tc normalised across trials, times and subjects
+fname = 'source_singledot_201709071126.h5'
+
+resfile = os.path.join(helpers.resultsdir, fname)
 
 evoked = helpers.load_evoked_container(window=[0, 0.9])
 
@@ -48,6 +56,7 @@ R = len(regs)
 
 measure = 'mean'
 sensor = 'MEG0741'
+#sensor = 'R_4_ROI-rh'
 
 fig, axes = plt.subplots(R, 1, sharex=True, sharey=True, figsize=[6, 8])
 axes[0].set_title('x-coordinate (%s)' % sensor)
