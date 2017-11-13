@@ -275,44 +275,59 @@ colors = sns.cubehelix_palette(2, start=1.3, rot=0, light=.6, dark=.4)
 
 xrange = regressors.linprepsig(np.r_[-1.15, 0.15])
 
-figm, axm = plt.subplots(1, figsize=[5, 4.5])
+figm, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 4.5])
 
-for hemi, color in zip(['L', 'R'], colors):
-    print('plotting hemisphere %s ...' % hemi, flush=True)
-    label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
-    
-    rdata = df[[label, r_name]].copy()
-    select = np.ones_like(rdata[r_name], dtype=bool)
-    if hemi == 'L':
-        # select trials which had a right choice
-        select = select & (choices == 1.0)
-        
-        # for right choices the motoresp_lin regressor is positive
-        Z = np.linspace(*xrange, 15)
-        xpred = np.linspace(*xrange, 200)[:, None]
-        rttime = (xpred - 1) * regressors.maxrt
-    else:
+
+def get_trials_xvals(choice):
+    if choice == 'L':
         # select trials which had a left choice
-        select = select & (choices == -1.0)
+        select = choices == -1.0
         
         # for left choices the motoresp_lin regressor is negative
         Z = np.linspace(*-xrange, 15)
         xpred = -np.linspace(*xrange, 200)[:, None]
         rttime = (-xpred - 1) * regressors.maxrt
-
-    rdata = rdata[select]
+    else:
+        # select trials which had a right choice
+        select = choices == 1.0
+        
+        # for right choices the motoresp_lin regressor is positive
+        Z = np.linspace(*xrange, 15)
+        xpred = np.linspace(*xrange, 200)[:, None]
+        rttime = (xpred - 1) * regressors.maxrt
     
-    gpm = fitgp(rdata[r_name], rdata[label], Z)
-    
-    plot_gp_result(axm, xpred, gpm, color, hemi, xx=rttime)
-    
+    return select, Z, xpred, rttime
 
-axm.set_xlabel('time from response (s)')
-axm.set_ylabel('normalised mean currents in area %s' % area)
-axm.plot([0, 0], axm.get_ylim(), ':k', label='time of response')
-axm.legend()
 
-figm.subplots_adjust(top=0.95, right=0.95, left=0.15)
+hemis = ['L', 'R']
+for choice, ax in zip(['contra', 'ipsi'], axes):
+    for hemi, color in zip(hemis, colors):
+        print('plotting hemisphere %s ...' % hemi, flush=True)
+        label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
+        
+        rdata = df[[label, r_name]].copy()
+        
+        if choice == 'ipsi':
+            plot_choice = hemi
+        else:
+            plot_choice = set(hemis).difference(hemi).pop()
+        select, Z, xpred, rttime = get_trials_xvals(plot_choice)
+        
+        rdata = rdata[select]
+        
+        gpm = fitgp(rdata[r_name], rdata[label], Z)
+        
+        plot_gp_result(ax, xpred, gpm, color, hemi, xx=rttime)
+
+    ax.set_xlabel('time from response (s)')
+
+
+axes[0].set_ylabel('normalised mean currents in area %s' % area)
+axes[0].legend()
+axes[0].set_title('contralateral choice')
+axes[1].set_title('ipsilateral choice')
+
+figm.subplots_adjust(top=.92, right=.96, wspace=.12)
 
 fname = os.path.join(figdir, 'motoprep_signal_%s_%d.png' % (
         area, time))
