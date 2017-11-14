@@ -72,7 +72,27 @@ class eye(object):
             ind = self._dotpos.loc[slice(d * self.dot_dur + self.dt, 
                                          (d + 1) * self.dot_dur)].index
             self._dotpos.loc[ind] = np.tile(dotpos[d, :], (ind.size, 1))
-            
+    
+    
+    @property
+    def move_delay(self):
+        return self._move_delay
+    
+    @move_delay.setter
+    def move_delay(self, md):
+        self._move_delay = md
+        self.calc_move_times()
+    
+
+    @property
+    def move_dur(self):
+        return self._move_dur
+    
+    @move_dur.setter
+    def move_dur(self, md):
+        self._move_dur = md
+        self.calc_move_times()
+        
     
     def __init__(self, dotpos, dt=10):
         self.dt = dt
@@ -81,9 +101,8 @@ class eye(object):
         self.dot_dur = 100
         self.dotonsets = np.arange(0, 900, self.dot_dur)
         
-        self.move_delay = 300
-        self.move_dur = 50
-        
+        self._move_delay = 300
+        self._move_dur = 50
         self.calc_move_times()
         
         self.dotpos = dotpos
@@ -99,15 +118,11 @@ class eye(object):
         
     
     def calc_move_times(self):
-        mtimes = []
-        for do in self.dotonsets:
-            times = np.arange(
-                    do + self.move_delay + self.dt, 
-                    do + self.move_delay + self.move_dur + self.dt, 
-                    self.dt)
-            mtimes.append(np.c_[times, 
-                                do / self.dot_dur * np.ones_like(times)])
-        self.move_times = np.concatenate(mtimes)
+        self.move_times = np.concatenate([
+                np.arange(do + self.move_delay + self.dt, 
+                          do + self.move_delay + self.move_dur + self.dt, 
+                          self.dt)
+                for do in self.dotonsets])
         
         self.move_onsets = self.dotonsets + self.move_delay
         
@@ -144,3 +159,25 @@ class eye(object):
             out.loc[time, 'move_dir'] = self.move_dir
             
         return out
+    
+    
+    def get_motor_commands(self, pos, pre=50, post=50):
+        dots = np.arange(1, self.move_onsets[  self.move_onsets 
+                                             < self.times[-1]].size + 1)
+        
+        mc = pd.DataFrame(
+                np.zeros((self.times.size, dots.size * 2)), 
+                index=self.times, dtype=float,
+                columns=pd.MultiIndex.from_product(
+                        [dots, ['x', 'y']], names=['dot', 'coordinate']))
+        
+        for dot in dots:
+            onset_time = self.move_onsets[dot - 1]
+            
+            mcdot = (  self.dotpos.loc[self.dotonsets[dot - 1] + self.dt] 
+                     - pos.loc[onset_time]).values
+            
+            mc.loc[slice(onset_time - pre + self.dt, 
+                         onset_time + self.move_dur + post), dot] = mcdot
+    
+        return mc

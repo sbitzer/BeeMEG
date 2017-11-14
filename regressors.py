@@ -63,6 +63,15 @@ trial_dot['move_x'] = np.r_[np.zeros((1, dotpos.shape[2])),
 trial_dot['move_y'] = np.r_[np.zeros((1, dotpos.shape[2])), 
                             np.diff(dotpos[:, 1, :], axis=0)].flatten('F')
 
+# hypothetical saccades to presented dot positions
+trial_dot['saccade_x'] = trial_dot['move_x']
+trial_dot.loc[(slice(None), 1), 'saccade_x'] = trial_dot.loc[(slice(None), 1), 
+                                                             'dot_x']
+trial_dot['saccade_y'] = trial_dot['move_y']
+trial_dot.loc[(slice(None), 1), 'saccade_y'] = trial_dot.loc[(slice(None), 1), 
+                                                             'dot_y']
+
+
 # how far did the dot jump?
 trial_dot['move_dist'] = np.r_[np.zeros((1, dotpos.shape[2])), 
                                np.sqrt(np.sum(np.diff(dotpos, axis=0) ** 2, axis=1))].flatten('F')
