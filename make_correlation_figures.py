@@ -424,14 +424,14 @@ def get_trials_xvals(choice):
 
 
 hemis = ['L', 'R']
-for choice, ax in zip(['contra', 'ipsi'], axes):
-    for hemi, color in zip(hemis, colors):
-        print('plotting hemisphere %s ...' % hemi, flush=True)
-        label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
-        
+for hemi, ax in zip(hemis, axes):
+    print('plotting hemisphere %s ...' % hemi, flush=True)
+    label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
+    
+    for choice, color in zip(['contralateral', 'ipsilateral'], colors):
         rdata = df[[label, r_name]].copy()
         
-        if choice == 'ipsi':
+        if choice == 'ipsilateral':
             plot_choice = hemi
         else:
             plot_choice = set(hemis).difference(hemi).pop()
@@ -441,15 +441,19 @@ for choice, ax in zip(['contra', 'ipsi'], axes):
         
         gpm = fitgp(rdata[r_name], rdata[label], Z)
         
-        plot_gp_result(ax, xpred, gpm, color, hemi, xx=rttime)
+        plot_gp_result(ax, xpred, gpm, color, choice, xx=rttime)
 
     ax.set_xlabel('time from response (s)')
-
+    ax.set_title(hemi)
+    
+    if hemi == hemis[0]:
+        yl = ax.get_ylim()
+    ax.plot([0, 0], yl, ':k', label='time of response')
+    
 
 axes[0].set_ylabel('normalised mean currents in area %s' % area)
 axes[0].legend()
-axes[0].set_title('contralateral choice')
-axes[1].set_title('ipsilateral choice')
+ax.set_ylim(yl)
 
 figm.subplots_adjust(top=.92, right=.96, wspace=.12)
 
