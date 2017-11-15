@@ -32,7 +32,7 @@ loadtimes = [120, 170, 320, 400]
 
 # regressor name to investigate
 # the first is the main one to investigate, following ones are used for comparison
-r_names = ['dot_x', 'dot_y', 'sum_dot_x']
+r_names = ['saccade_x', 'dot_x', 'dot_y', 'sum_dot_x']
 r_name = r_names[0]
 
 # dots to investigate
@@ -103,7 +103,7 @@ Bx = 8
 
 
 #%% make correlation figure for a single regressor at different times
-r_name = 'dot_x'
+r_name = 'saccade_x'
 
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 4.5])
 
@@ -190,6 +190,130 @@ def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None,
                      ax=ax, scatter_kws={'color': color}, fit_reg=False)
     
     return gpm
+
+
+#%% statistical test for difference between correlations
+#   taken from http://www.philippsinger.info/?p=347
+#   https://github.com/psinger/CorrelationStats
+#   see also:
+# [4] J. H. Steiger, "Tests for comparing elements of a correlation matrix.," 
+#     Psychological bulletin, vol. 87, iss. 2, p. 245, 1980.
+# [5] G. Y. Zou, "Toward using confidence intervals to compare correlations.," 
+#     Psychological methods, vol. 12, iss. 4, pp. 399-413, 2007. 
+import scipy.stats
+import math
+
+def rz_ci(r, n, conf_level = 0.95):
+    zr_se = pow(1/(n - 3), .5)
+    moe = scipy.stats.norm.ppf(1 - (1 - conf_level)/float(2)) * zr_se
+    zu = math.atanh(r) + moe
+    zl = math.atanh(r) - moe
+    return np.tanh((zl, zu))
+
+def rho_rxy_rxz(rxy, rxz, ryz):
+    num = (ryz-1/2.*rxy*rxz)*(1-pow(rxy,2)-pow(rxz,2)-pow(ryz,2))+pow(ryz,3)
+    den = (1 - pow(rxy,2)) * (1 - pow(rxz,2))
+    return num/float(den)
+
+def dependent_corr(xy, xz, yz, n, twotailed=True, conf_level=0.95, 
+                   method='steiger'):
+    """
+    Calculates the statistical significance for the null hypothesis that the
+    difference between correlations xy - xz = 0 given that variables y and z 
+    are themselves correlated
+    
+    @param xy: correlation coefficient between x and y
+    @param xz: correlation coefficient between x and z
+    @param yz: correlation coefficient between y and z
+    @param n: number of elements in x, y and z
+    @param twotailed: whether to calculate a one or two tailed test, 
+           only works for 'steiger' method
+    @param conf_level: confidence level, only works for 'zou' method
+    @param method: defines the method uses, 'steiger' or 'zou'
+    @return: t and p-val
+    """
+    if method == 'steiger':
+        d = xy - xz
+        determin = 1 - xy * xy - xz * xz - yz * yz + 2 * xy * xz * yz
+        av = (xy + xz)/2
+        cube = (1 - yz) * (1 - yz) * (1 - yz)
+
+        t2 = d * np.sqrt((n - 1) * (1 + yz)/(((2 * (n - 1)/(n - 3)) * determin 
+                         + av * av * cube)))
+        p = 1 - scipy.stats.t.cdf(abs(t2), n - 3)
+
+        if twotailed:
+            p *= 2
+
+        return t2, p
+    elif method == 'zou':
+        L1 = rz_ci(xy, n, conf_level=conf_level)[0]
+        U1 = rz_ci(xy, n, conf_level=conf_level)[1]
+        L2 = rz_ci(xz, n, conf_level=conf_level)[0]
+        U2 = rz_ci(xz, n, conf_level=conf_level)[1]
+        rho_r12_r13 = rho_rxy_rxz(xy, xz, yz)
+        lower = xy - xz - pow(
+                (pow((xy - L1), 2) + pow((U2 - xz), 2) 
+                 - 2 * rho_r12_r13 * (xy - L1) * (U2 - xz)), 0.5)
+        upper = xy - xz + pow(
+                (pow((U1 - xy), 2) + pow((xz - L2), 2) 
+                - 2 * rho_r12_r13 * (U1 - xy) * (xz - L2)), 0.5)
+        return lower, upper
+    else:
+        raise Exception('Wrong method!')
+
+
+#%% compare correlations of two different regressors in same plot
+time = loadtimes[-1]
+names = ['saccade_x', 'dot_x']
+linelabels = ['saccade', 'evidence']
+
+colors = sns.cubehelix_palette(len(loadtimes), start=0.5, rot=1.6, light=.75, 
+                               dark=.25)
+colors = colors[slice(1, 4, 2)]
+
+fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 4.5])
+
+xrange = reg[names].stack().quantile([0.1, 0.9])
+xpred = np.linspace(*xrange, 200)[:, None]
+
+df = pd.concat([data.loc[time], reg[names]], axis=1)
+corrs = df.corr()
+
+for hemi, ax in zip(['L', 'R'], axes):
+    print('processing hemisphere %s ...' % hemi, flush=True)
+    label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
+    
+    # statistical test for equality of correlations
+    ci_low, ci_high = dependent_corr(
+        corrs.loc[label, names[0]], 
+        corrs.loc[label, names[1]], 
+        corrs.loc[names[0], names[1]], df.shape[0], method='zou')
+    tval, pval = dependent_corr(
+        corrs.loc[label, names[0]], 
+        corrs.loc[label, names[1]], 
+        corrs.loc[names[0], names[1]], df.shape[0], method='steiger')
+    print('stats for correlation with %s - correlation with %s = 0:' 
+          % (names[0], names[1]))
+    print('   ci: [% 6.3f, % 6.3f]' % (ci_low, ci_high))
+    print('   t = % 5.2f, p = %f\n' % (tval, pval))
+    
+    for name, linelabel, color in zip(names, linelabels, colors):
+        rdata = df[[label, name]]
+        gpm = fitgp(df[name], df[label], np.linspace(*xrange, 15))
+        
+        plot_gp_result(ax, xpred, gpm, color, linelabel)
+    
+    ax.set_title(hemi)
+    ax.set_xlabel('x-coordinate (px)')
+        
+axes[0].legend(loc='upper left')
+axes[0].set_ylabel('normalised mean currents in area %s' % area)
+
+fig.subplots_adjust(top=.92, right=.96, wspace=.12)
+fname = os.path.join(figdir, 'correlation_%s_%s_vs_%s_%d.png' % (
+        area, names[0], names[1], time))
+fig.savefig(fname, dpi=300)
 
 
 #%% compare correlations for one regressor for all vs. only early time points
