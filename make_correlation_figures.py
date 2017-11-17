@@ -265,8 +265,8 @@ def dependent_corr(xy, xz, yz, n, twotailed=True, conf_level=0.95,
 
 #%% compare correlations of two different regressors in same plot
 time = loadtimes[-1]
-names = ['saccade_x', 'dot_x']
-linelabels = ['saccade', 'evidence']
+names = ['sum_dot_x', 'dot_x']
+linelabels = ['accumulated', 'momentary']
 
 colors = sns.cubehelix_palette(len(loadtimes), start=0.5, rot=1.6, light=.75, 
                                dark=.25)
@@ -274,11 +274,19 @@ colors = colors[slice(1, 4, 2)]
 
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 4.5])
 
-xrange = reg[names].stack().quantile([0.1, 0.9])
-xpred = np.linspace(*xrange, 200)[:, None]
-
 df = pd.concat([data.loc[time], reg[names]], axis=1)
+
+# normalise regressor values so that you see the whole range of both of them
+#df[names] = df[names] / df[names].std()
+
+# exclude most data points for which regressor values are similar
+#diff = np.abs(df.dot_x - df.sum_dot_x)
+#df = df[diff > diff.quantile(0.8)]
+
 corrs = df.corr()
+
+xrange = df[names].stack().quantile([0.01, 0.99])
+xpred = np.linspace(*xrange, 200)[:, None]
 
 for hemi, ax in zip(['L', 'R'], axes):
     print('processing hemisphere %s ...' % hemi, flush=True)
