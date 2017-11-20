@@ -275,7 +275,7 @@ colors = colors[slice(1, 4, 2)]
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 4.5])
 
 df = pd.concat([data.loc[time], reg[names]], axis=1)
-
+df = df.loc[17]
 # normalise regressor values so that you see the whole range of both of them
 #df[names] = df[names] / df[names].std()
 
@@ -321,7 +321,7 @@ axes[0].set_ylabel('normalised mean currents in area %s' % area)
 fig.subplots_adjust(top=.92, right=.96, wspace=.12)
 fname = os.path.join(figdir, 'correlation_%s_%s_vs_%s_%d.png' % (
         area, names[0], names[1], time))
-fig.savefig(fname, dpi=300)
+#fig.savefig(fname, dpi=300)
 
 
 #%% compare correlations for one regressor for all vs. only early time points
