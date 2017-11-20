@@ -152,7 +152,7 @@ def plot_gp_result(ax, xpred, gpm, color, label, xx=None):
     ax.fill_between(xx[:, 0], gpmean - 2 * gpstd, gpmean + 2 * gpstd, 
                     facecolor=color, alpha=.15)
     
-def fitgp(xvals, data, Z):
+def fitgp(xvals, data, Z, biasstd=1.0, smooth=True):
     if data.ndim < 2:
         data = data[:, None]
     if xvals.ndim < 2:
@@ -160,11 +160,36 @@ def fitgp(xvals, data, Z):
     if Z.ndim < 2:
         Z = Z[:, None]
     
-    gpm = GPy.models.SparseGPRegression(xvals, data, Z=Z)
+    # choose basic covariance function, the squared exponential (i.e. RBF) is 
+    # known to be very smooth while the Matern-class allows for local bumps;
+    # the global features / overall shape of the function should be very 
+    # similar, though
+    if smooth:
+        kern = GPy.kern.RBF(1)
+    else:
+        kern = GPy.kern.Matern32(1)
     
-    # set reasonable initial values
+    # reasonable initial value for lengthscale
+    kern.lengthscale = xvals.std()
+    
+    if biasstd:
+        # the bias kernel adds a constant to the covariance function which
+        # corresponds to adding an offset/intercept to the underlying function
+        # note however, that if the underlying linear model is y = f(x) + b, 
+        # then b has a Gaussian prior with b ~ N(0, kern.Bias.variance); thus, 
+        # you cannot interpret kern.Bias.variance as the fitted intercept!
+        kern += GPy.kern.Bias(1, biasstd ** 2)
+    
+    gpm = GPy.models.SparseGPRegression(xvals, data, kernel=kern, Z=Z)
+    
+    # set noise variance to a reasonable initial value
     gpm.likelihood.variance = data.var()
-    gpm.kern.lengthscale = xvals.std()
+    
+    # do not optimise inducing inputs (makes no big difference at least for 
+    # comparison of dot_x and sum_dot_x in individual subjects, or pooled, 
+    # because the inducing inputs move only minimally from their initial 
+    # values and the results are very similar)
+#    gpm.Z.fix()
     
     gpm.optimize()
     
@@ -275,7 +300,8 @@ colors = colors[slice(1, 4, 2)]
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 4.5])
 
 df = pd.concat([data.loc[time], reg[names]], axis=1)
-df = df.loc[17]
+#df = df.loc[27]
+
 # normalise regressor values so that you see the whole range of both of them
 #df[names] = df[names] / df[names].std()
 
@@ -307,7 +333,6 @@ for hemi, ax in zip(['L', 'R'], axes):
     print('   t = % 5.2f, p = %f\n' % (tval, pval))
     
     for name, linelabel, color in zip(names, linelabels, colors):
-        rdata = df[[label, name]]
         gpm = fitgp(df[name], df[label], np.linspace(*xrange, 15))
         
         plot_gp_result(ax, xpred, gpm, color, linelabel)
@@ -321,7 +346,7 @@ axes[0].set_ylabel('normalised mean currents in area %s' % area)
 fig.subplots_adjust(top=.92, right=.96, wspace=.12)
 fname = os.path.join(figdir, 'correlation_%s_%s_vs_%s_%d.png' % (
         area, names[0], names[1], time))
-#fig.savefig(fname, dpi=300)
+fig.savefig(fname, dpi=300)
 
 
 #%% compare correlations for one regressor for all vs. only early time points
