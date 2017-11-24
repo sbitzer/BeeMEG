@@ -14,7 +14,7 @@ import seaborn as sns
 import regressors
 import os
 import gc
-import GPy
+import source_statistics as ss
 
 figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
@@ -45,7 +45,7 @@ loadlabels = ['{}_{}_ROI-{}h'.format(hemi, area, hemi.lower()) for hemi in ['L',
 
 subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
 
-srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', file)
+srcfile = os.path.join(ss.bem_dir, file)
 
 with pd.HDFStore(srcfile, 'r') as store:
     epochs = store.select('label_tc', 'subject=2')
@@ -135,159 +135,6 @@ fig.savefig(os.path.join(figdir, 'correlation_%s_%s.png' % (area, r_name)),
             dpi=300)
 
 
-#%% plot helper
-def plot_gp_result(ax, xpred, gpm, color, label, xx=None):
-    if xx is None:
-        xx = xpred
-        
-    gpmean, gpvar = gpm.predict_noiseless(xpred)
-    
-    gpmean = gpmean[:, 0]
-    gpstd = np.sqrt(gpvar[:, 0])
-    
-    lw = plt.rcParams["lines.linewidth"] * 1.5
-    
-    # Draw the regression line and confidence interval
-    ax.plot(xx, gpmean, color=color, lw=lw, label=label)
-    ax.fill_between(xx[:, 0], gpmean - 2 * gpstd, gpmean + 2 * gpstd, 
-                    facecolor=color, alpha=.15)
-    
-def fitgp(xvals, data, Z, biasstd=1.0, smooth=True):
-    if data.ndim < 2:
-        data = data[:, None]
-    if xvals.ndim < 2:
-        xvals = xvals[:, None]
-    if Z.ndim < 2:
-        Z = Z[:, None]
-    
-    # choose basic covariance function, the squared exponential (i.e. RBF) is 
-    # known to be very smooth while the Matern-class allows for local bumps;
-    # the global features / overall shape of the function should be very 
-    # similar, though
-    if smooth:
-        kern = GPy.kern.RBF(1)
-    else:
-        kern = GPy.kern.Matern32(1)
-    
-    # reasonable initial value for lengthscale
-    kern.lengthscale = xvals.std()
-    
-    if biasstd:
-        # the bias kernel adds a constant to the covariance function which
-        # corresponds to adding an offset/intercept to the underlying function
-        # note however, that if the underlying linear model is y = f(x) + b, 
-        # then b has a Gaussian prior with b ~ N(0, kern.Bias.variance); thus, 
-        # you cannot interpret kern.Bias.variance as the fitted intercept!
-        kern += GPy.kern.Bias(1, biasstd ** 2)
-    
-    gpm = GPy.models.SparseGPRegression(xvals, data, kernel=kern, Z=Z)
-    
-    # set noise variance to a reasonable initial value
-    gpm.likelihood.variance = data.var()
-    
-    # do not optimise inducing inputs (makes no big difference at least for 
-    # comparison of dot_x and sum_dot_x in individual subjects, or pooled, 
-    # because the inducing inputs move only minimally from their initial 
-    # values and the results are very similar)
-#    gpm.Z.fix()
-    
-    gpm.optimize()
-    
-    return gpm
-    
-
-def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None, 
-              line_kws=None, scatter_kws=None, xrange=[-1.5, 1.5]):
-    gpm = fitgp(rdata[r_name], rdata[label], np.linspace(*xrange, 15))
-    
-    xpred = np.linspace(*xrange, 200)[:, None]
-    
-    if ax is None:
-        fig, ax = plt.subplots()
-    
-    # plot regression function
-    plot_gp_result(ax, xpred, gpm, line_kws['color'], line_kws['label'])
-    
-    # scatterplot
-    bin_edges = np.linspace(*xrange, x_bins+1)
-    binx = (bin_edges[:-1] + bin_edges[1:]) / 2
-    ax = sns.regplot(r_name, label, rdata, x_estimator=np.mean, x_bins=binx, 
-                     ax=ax, scatter_kws={'color': color}, fit_reg=False)
-    
-    return gpm
-
-
-#%% statistical test for difference between correlations
-#   taken from http://www.philippsinger.info/?p=347
-#   https://github.com/psinger/CorrelationStats
-#   see also:
-# [4] J. H. Steiger, "Tests for comparing elements of a correlation matrix.," 
-#     Psychological bulletin, vol. 87, iss. 2, p. 245, 1980.
-# [5] G. Y. Zou, "Toward using confidence intervals to compare correlations.," 
-#     Psychological methods, vol. 12, iss. 4, pp. 399-413, 2007. 
-import scipy.stats
-import math
-
-def rz_ci(r, n, conf_level = 0.95):
-    zr_se = pow(1/(n - 3), .5)
-    moe = scipy.stats.norm.ppf(1 - (1 - conf_level)/float(2)) * zr_se
-    zu = math.atanh(r) + moe
-    zl = math.atanh(r) - moe
-    return np.tanh((zl, zu))
-
-def rho_rxy_rxz(rxy, rxz, ryz):
-    num = (ryz-1/2.*rxy*rxz)*(1-pow(rxy,2)-pow(rxz,2)-pow(ryz,2))+pow(ryz,3)
-    den = (1 - pow(rxy,2)) * (1 - pow(rxz,2))
-    return num/float(den)
-
-def dependent_corr(xy, xz, yz, n, twotailed=True, conf_level=0.95, 
-                   method='steiger'):
-    """
-    Calculates the statistical significance for the null hypothesis that the
-    difference between correlations xy - xz = 0 given that variables y and z 
-    are themselves correlated
-    
-    @param xy: correlation coefficient between x and y
-    @param xz: correlation coefficient between x and z
-    @param yz: correlation coefficient between y and z
-    @param n: number of elements in x, y and z
-    @param twotailed: whether to calculate a one or two tailed test, 
-           only works for 'steiger' method
-    @param conf_level: confidence level, only works for 'zou' method
-    @param method: defines the method uses, 'steiger' or 'zou'
-    @return: t and p-val
-    """
-    if method == 'steiger':
-        d = xy - xz
-        determin = 1 - xy * xy - xz * xz - yz * yz + 2 * xy * xz * yz
-        av = (xy + xz)/2
-        cube = (1 - yz) * (1 - yz) * (1 - yz)
-
-        t2 = d * np.sqrt((n - 1) * (1 + yz)/(((2 * (n - 1)/(n - 3)) * determin 
-                         + av * av * cube)))
-        p = 1 - scipy.stats.t.cdf(abs(t2), n - 3)
-
-        if twotailed:
-            p *= 2
-
-        return t2, p
-    elif method == 'zou':
-        L1 = rz_ci(xy, n, conf_level=conf_level)[0]
-        U1 = rz_ci(xy, n, conf_level=conf_level)[1]
-        L2 = rz_ci(xz, n, conf_level=conf_level)[0]
-        U2 = rz_ci(xz, n, conf_level=conf_level)[1]
-        rho_r12_r13 = rho_rxy_rxz(xy, xz, yz)
-        lower = xy - xz - pow(
-                (pow((xy - L1), 2) + pow((U2 - xz), 2) 
-                 - 2 * rho_r12_r13 * (xy - L1) * (U2 - xz)), 0.5)
-        upper = xy - xz + pow(
-                (pow((U1 - xy), 2) + pow((xz - L2), 2) 
-                - 2 * rho_r12_r13 * (U1 - xy) * (xz - L2)), 0.5)
-        return lower, upper
-    else:
-        raise Exception('Wrong method!')
-
-
 #%% compare correlations of two different regressors in same plot
 time = loadtimes[-1]
 names = ['sum_dot_x', 'dot_x']
@@ -319,11 +166,11 @@ for hemi, ax in zip(['L', 'R'], axes):
     label = '{}_{}_ROI-{}h'.format(hemi, area, hemi.lower())
     
     # statistical test for equality of correlations
-    ci_low, ci_high = dependent_corr(
+    ci_low, ci_high = ss.dependent_corr(
         corrs.loc[label, names[0]], 
         corrs.loc[label, names[1]], 
         corrs.loc[names[0], names[1]], df.shape[0], method='zou')
-    tval, pval = dependent_corr(
+    tval, pval = ss.dependent_corr(
         corrs.loc[label, names[0]], 
         corrs.loc[label, names[1]], 
         corrs.loc[names[0], names[1]], df.shape[0], method='steiger')
@@ -333,9 +180,9 @@ for hemi, ax in zip(['L', 'R'], axes):
     print('   t = % 5.2f, p = %f\n' % (tval, pval))
     
     for name, linelabel, color in zip(names, linelabels, colors):
-        gpm = fitgp(df[name], df[label], np.linspace(*xrange, 15))
+        gpm = ss.fitgp(df[name], df[label], np.linspace(*xrange, 15))
         
-        plot_gp_result(ax, xpred, gpm, color, linelabel)
+        ss.plot_gp_result(ax, xpred, gpm, color, linelabel)
     
     ax.set_title(hemi)
     ax.set_xlabel('x-coordinate (px)')
@@ -404,7 +251,7 @@ for hemi, ax in zip(['L', 'R'], axes):
         rdata = rdata[select]
         
 #        regplot = sns.regplot
-        regplot = gpregplot
+        regplot = ss.gpregplot
         gpm = regplot(r_name, label, rdata, x_estimator=np.mean, x_bins=8, 
                       ax=ax, line_kws={'color': color, 'label': selabel},
                       scatter_kws={'color': color}, xrange=xrange)
@@ -472,9 +319,9 @@ for hemi, ax in zip(hemis, axes):
         
         rdata = rdata[select]
         
-        gpm = fitgp(rdata[r_name], rdata[label], Z)
+        gpm = ss.fitgp(rdata[r_name], rdata[label], Z)
         
-        plot_gp_result(ax, xpred, gpm, color, choice, xx=rttime)
+        ss.plot_gp_result(ax, xpred, gpm, color, choice, xx=rttime)
 
     ax.set_xlabel('time from response (s)')
     ax.set_title(hemi)
