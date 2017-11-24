@@ -45,33 +45,43 @@ fig.savefig(os.path.join(figdir, 'pooledRTs.png'),
 
 #%% plot evidence-choice correlations
 dots = np.arange(1, 15)
-DM = subject_DM.get_trial_DM(dots, r_names=['dot_x', 'sum_dot_x', 'response'])
 
-def get_corrs(r_name):
-    dmcols = [name for name in DM.columns if ((name == 'response') or 
-                                              (name.startswith(r_name)))]
+fig, axes = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(7.5, 3.5))
+
+for coord, ax in zip(['x', 'y'], axes):
+    r_names = ['dot_'+coord, 'sum_dot_'+coord, 'response']
+    coord = coord + '-coordinate'
+    DM = subject_DM.get_trial_DM(dots, r_names=r_names)
     
-    correlations = DM.groupby(level='subject').apply(
-            lambda dm: dm[dmcols].corr().loc['response'])
+    def get_corrs(r_name):
+        dmcols = [name for name in DM.columns if ((name == 'response') or 
+                                                  (name.startswith(r_name)))]
+        
+        correlations = DM.groupby(level='subject').apply(
+                lambda dm: dm[dmcols].corr().loc['response'])
+        
+        del correlations['response']
+        correlations.columns = pd.Index(dots, name='dot')
+        
+        return correlations
     
-    del correlations['response']
-    correlations.columns = pd.Index(dots, name='dot')
+    correlations = pd.concat([get_corrs(name) for name in r_names[:2]],
+                             keys=['single dot', 'accumulated'], 
+                             names=[coord, 'dot'], axis=1)
+    correlations = correlations.stack().stack().reset_index()
     
-    return correlations
+    sns.stripplot('dot', 0, coord, data=correlations, jitter=True, 
+                  dodge=True, ax=ax)
+    
+    ax.set_title(coord)
 
-correlations = pd.concat([get_corrs(name) for name in ['dot_x', 'sum_dot_x']],
-                         keys=['momentary', 'accumulated'], 
-                         names=['evidence', 'dot'], axis=1)
-correlations = correlations.stack().stack().reset_index()
-
-fig, ax = plt.subplots(1, figsize=(6, 4))
-
-sns.stripplot('dot', 0, 'evidence', data=correlations, jitter=True, 
-              dodge=True, ax=ax)
-ax.set_ylabel('correlation with choice');
 #ax.set_ylim([0, 1])
+axes[0].set_ylabel('correlation with choice');
+axes[0].legend().set_visible(False)
+axes[1].set_ylabel('');
+axes[1].legend()
 
-fig.subplots_adjust(top=0.95, bottom=0.12, left=0.11, right=0.97)
+fig.subplots_adjust(top=0.9, bottom=0.15, left=0.09, right=0.97, wspace=0.07)
 
 fig.savefig(os.path.join(figdir, 'choice_correlations.png'),
             dpi=300)
