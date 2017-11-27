@@ -316,7 +316,7 @@ for perm in np.arange(nperm+1):
                 if rt_thresh is not None:
                     dottimes = np.tile(datat / 1000, 480)
                     dottimes = dottimes[good_trials.loc[sub].values]
-                    select = ((rts.loc[sub] - dottimes) > 0.5).values
+                    select = ((rts.loc[sub] - dottimes) > rt_thresh).values
                     
                     data = data[select]
                 
