@@ -16,7 +16,6 @@ import seaborn as sns
 from scipy.interpolate import interp1d
 import mne
 from warnings import warn
-import GPy
 import matplotlib.pyplot as plt
 
 
@@ -237,7 +236,7 @@ def get_fdrcorr_clusters(basefile, regressors, fdr_alpha, measure=None,
     
     # if clusters were defined directly based on FDR-correct p-values
     if cdf is None:
-        assert measure == 'mlog10p_fdr'
+        assert measure.startswith('mlog10p')
         # get_time_clusters returns the sum of mlog10p-values in the cluster
         # so these need to be multiplied by -1 to get log10p
         clusters['log10p'] = -clusters.log10p
@@ -468,82 +467,88 @@ def dependent_corr(xy, xz, yz, n, twotailed=True, conf_level=0.95,
         
         
 #%% sparse Gaussian process analyses for functional relationships
-def plot_gp_result(ax, xpred, gpm, color, label, xx=None):
-    if xx is None:
-        xx = xpred
+try: 
+    import GPy
+except ImportError:
+    print('No GPy found. Skipping definition of GP functions in '
+          'source_statistics.')
+else:
+    def plot_gp_result(ax, xpred, gpm, color, label, xx=None):
+        if xx is None:
+            xx = xpred
+            
+        gpmean, gpvar = gpm.predict_noiseless(xpred)
         
-    gpmean, gpvar = gpm.predict_noiseless(xpred)
+        gpmean = gpmean[:, 0]
+        gpstd = np.sqrt(gpvar[:, 0])
+        
+        lw = plt.rcParams["lines.linewidth"] * 1.5
+        
+        # Draw the regression line and confidence interval
+        ax.plot(xx, gpmean, color=color, lw=lw, label=label)
+        ax.fill_between(xx[:, 0], gpmean - 2 * gpstd, gpmean + 2 * gpstd, 
+                        facecolor=color, alpha=.15)
+        
+    def fitgp(xvals, data, Z, biasstd=1.0, smooth=True):
+        if data.ndim < 2:
+            data = data[:, None]
+        if xvals.ndim < 2:
+            xvals = xvals[:, None]
+        if Z.ndim < 2:
+            Z = Z[:, None]
+        
+        # choose basic covariance function, the squared exponential (i.e. RBF) is 
+        # known to be very smooth while the Matern-class allows for local bumps;
+        # the global features / overall shape of the function should be very 
+        # similar, though
+        if smooth:
+            kern = GPy.kern.RBF(1)
+        else:
+            kern = GPy.kern.Matern32(1)
+        
+        # reasonable initial value for lengthscale
+        kern.lengthscale = xvals.std()
+        
+        if biasstd:
+            # the bias kernel adds a constant to the covariance function which
+            # corresponds to adding an offset/intercept to the underlying function
+            # note however, that if the underlying linear model is y = f(x) + b, 
+            # then b has a Gaussian prior with b ~ N(0, kern.Bias.variance); thus, 
+            # you cannot interpret kern.Bias.variance as the fitted intercept!
+            kern += GPy.kern.Bias(1, biasstd ** 2)
+        
+        gpm = GPy.models.SparseGPRegression(xvals, data, kernel=kern, Z=Z)
+        
+        # set noise variance to a reasonable initial value
+        gpm.likelihood.variance = data.var()
+        
+        # do not optimise inducing inputs (makes no big difference at least for 
+        # comparison of dot_x and sum_dot_x in individual subjects, or pooled, 
+        # because the inducing inputs move only minimally from their initial 
+        # values and the results are very similar)
+    #    gpm.Z.fix()
+        
+        gpm.optimize()
+        
+        return gpm
+        
     
-    gpmean = gpmean[:, 0]
-    gpstd = np.sqrt(gpvar[:, 0])
-    
-    lw = plt.rcParams["lines.linewidth"] * 1.5
-    
-    # Draw the regression line and confidence interval
-    ax.plot(xx, gpmean, color=color, lw=lw, label=label)
-    ax.fill_between(xx[:, 0], gpmean - 2 * gpstd, gpmean + 2 * gpstd, 
-                    facecolor=color, alpha=.15)
-    
-def fitgp(xvals, data, Z, biasstd=1.0, smooth=True):
-    if data.ndim < 2:
-        data = data[:, None]
-    if xvals.ndim < 2:
-        xvals = xvals[:, None]
-    if Z.ndim < 2:
-        Z = Z[:, None]
-    
-    # choose basic covariance function, the squared exponential (i.e. RBF) is 
-    # known to be very smooth while the Matern-class allows for local bumps;
-    # the global features / overall shape of the function should be very 
-    # similar, though
-    if smooth:
-        kern = GPy.kern.RBF(1)
-    else:
-        kern = GPy.kern.Matern32(1)
-    
-    # reasonable initial value for lengthscale
-    kern.lengthscale = xvals.std()
-    
-    if biasstd:
-        # the bias kernel adds a constant to the covariance function which
-        # corresponds to adding an offset/intercept to the underlying function
-        # note however, that if the underlying linear model is y = f(x) + b, 
-        # then b has a Gaussian prior with b ~ N(0, kern.Bias.variance); thus, 
-        # you cannot interpret kern.Bias.variance as the fitted intercept!
-        kern += GPy.kern.Bias(1, biasstd ** 2)
-    
-    gpm = GPy.models.SparseGPRegression(xvals, data, kernel=kern, Z=Z)
-    
-    # set noise variance to a reasonable initial value
-    gpm.likelihood.variance = data.var()
-    
-    # do not optimise inducing inputs (makes no big difference at least for 
-    # comparison of dot_x and sum_dot_x in individual subjects, or pooled, 
-    # because the inducing inputs move only minimally from their initial 
-    # values and the results are very similar)
-#    gpm.Z.fix()
-    
-    gpm.optimize()
-    
-    return gpm
-    
-
-def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None, 
-              line_kws=None, scatter_kws=None, xrange=[-1.5, 1.5]):
-    gpm = fitgp(rdata[r_name], rdata[label], np.linspace(*xrange, 15))
-    
-    xpred = np.linspace(*xrange, 200)[:, None]
-    
-    if ax is None:
-        fig, ax = plt.subplots()
-    
-    # plot regression function
-    plot_gp_result(ax, xpred, gpm, line_kws['color'], line_kws['label'])
-    
-    # scatterplot
-    bin_edges = np.linspace(*xrange, x_bins+1)
-    binx = (bin_edges[:-1] + bin_edges[1:]) / 2
-    ax = sns.regplot(r_name, label, rdata, x_estimator=np.mean, x_bins=binx, 
-                     ax=ax, scatter_kws=scatter_kws, fit_reg=False)
-    
-    return gpm
+    def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None, 
+                  line_kws=None, scatter_kws=None, xrange=[-1.5, 1.5]):
+        gpm = fitgp(rdata[r_name], rdata[label], np.linspace(*xrange, num=15))
+        
+        xpred = np.linspace(*xrange, num=200)[:, None]
+        
+        if ax is None:
+            fig, ax = plt.subplots()
+        
+        # plot regression function
+        plot_gp_result(ax, xpred, gpm, line_kws['color'], line_kws['label'])
+        
+        # scatterplot
+        bin_edges = np.linspace(*xrange, num=x_bins+1)
+        binx = (bin_edges[:-1] + bin_edges[1:]) / 2
+        ax = sns.regplot(r_name, label, rdata, x_estimator=np.mean, x_bins=binx, 
+                         ax=ax, scatter_kws=scatter_kws, fit_reg=False)
+        
+        return gpm
