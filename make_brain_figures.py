@@ -39,10 +39,14 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 # source GLM, trial regressors only
 # subject-specific normalisation of DM without centering and scaling by std
 # label_tc normalised across trials, times and subjects
-basefile = 'source_singledot_201711281123.h5.tmp'
+basefile = 'source_singledot_201711281123.h5'
 
 
 #%%
+scparams = pd.read_hdf(os.path.join(ss.inf_dir, basefile), 'scalar_params')
+response_aligned = ('response_aligned' in scparams.index) and bool(
+        scparams.loc['response_aligned'])
+
 if basefile.startswith('source_sequential'):
     regressors = ['dot_x', 'dot_y', 'accev', 'sum_dot_y_prev']
 
@@ -70,6 +74,44 @@ clusters = ss.get_fdrcorr_clusters(basefile, regressors, fdr_alpha,
 #                                   measure, threshold, measure_cdf)
 
 
+#%% define how colormap is set
+def get_colorinfo(r_name, clusters):
+    Nsig = ((  clusters.loc['response'].end_t 
+             - clusters.loc['response'].start_t) / 10 + 1).sum()
+    
+    # if sufficiently many significant effects
+    if Nsig >= 12:
+        # set non-significant effects to NaN
+        src_df_masked = ss.load_src_df(basefile, r_name_cmap, clusters, 
+                                       use_basefile)
+    else:
+        # there are not sufficiently many significant effects after FDR, 
+        # so don't mask
+        src_df_masked = ss.load_src_df(basefile, r_name_cmap, None, 
+                                       use_basefile)
+    
+    if show_measure not in src_df_masked.columns:
+        ss.add_measure(src_df_masked, show_measure)
+        
+    if Nsig >= 12:
+        # make colormap based on distribution of significant effects
+        colorinfo = {'fmin': src_df_masked[show_measure].abs().min(),
+                     'fmid': src_df_masked[show_measure].abs().median(), 
+                     'fmax': src_df_masked[show_measure].abs().max(), 
+                     'transparent': True,
+                     'colormap': 'auto'}
+    else:
+        # make colormap based on distribution of all effects
+        colorinfo = {
+                'fmin': src_df_masked[show_measure].abs().quantile(0.95),
+                'fmid': src_df_masked[show_measure].abs().quantile(0.99),
+                'fmax': src_df_masked[show_measure].abs().quantile(0.999),
+                'transparent': True,
+                'colormap': 'auto'}
+    
+    return colorinfo
+
+
 #%% load specific regressors
 show_measure = 'absmean'
 r_name = 'response'
@@ -77,7 +119,7 @@ r_name = 'response'
 # set 'mask = clusters' to only show significant effects, otherwise set to None
 mask = clusters
 
-use_basefile = show_measure in ss.basefile_measures
+use_basefile = show_measure in ss.basefile_measures    
 
 if show_measure == 'consistency':
     colorinfo = {'fmin': 0, 'fmid': 0.5, 'fmax': 1, 'transparent': False,
@@ -89,32 +131,10 @@ else:
         # regressor which should be used to define the colormap
         r_name_cmap = 'dot_x'
         
-        # load only the significant data
-        src_df_masked = ss.load_src_df(basefile, r_name_cmap, clusters, 
-                                       use_basefile)
-        if show_measure not in src_df_masked.columns:
-            ss.add_measure(src_df_masked, show_measure)
-        
-        colorinfo = {'fmin': src_df_masked[show_measure].abs().min(),
-                     'fmid': src_df_masked[show_measure].abs().median(), 
-                     'fmax': src_df_masked[show_measure].abs().max(), 
-                     'transparent': True,
-                     'colormap': 'auto'}
     elif basefile.startswith('source_singledot'):
         r_name_cmap = 'response'
         
-        # there are no significant effects after FDR, so don't mask
-        src_df_masked = ss.load_src_df(basefile, r_name_cmap, None, 
-                                       use_basefile)
-        if show_measure not in src_df_masked.columns:
-            ss.add_measure(src_df_masked, show_measure)
-            
-        # set quantile-based colormap info
-        colorinfo = {'fmin': src_df_masked[show_measure].abs().quantile(0.95),
-                     'fmid': src_df_masked[show_measure].abs().quantile(0.99),
-                     'fmax': src_df_masked[show_measure].abs().quantile(0.999),
-                     'transparent': True,
-                     'colormap': 'auto'}
+    colorinfo = get_colorinfo(r_name_cmap, clusters)
     
     if r_name == 'dot_x':
         x_times = [120, 170, 320, 400]
@@ -126,7 +146,10 @@ else:
     elif r_name == 'dot_y':
         x_times = [120, 170, 320, 400]
     elif r_name == 'response':
-        x_times = [780, 820, 890]
+        if response_aligned:
+            x_times = [-30, 0, 30, 50]
+        else:
+            x_times = [780, 820, 890]
 
 # load the selected regressors and mask as desired
 src_df_masked = pd.concat(
