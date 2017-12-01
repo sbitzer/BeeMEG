@@ -18,10 +18,10 @@ from warnings import warn
 
 #%% options
 # which dot to investigate?
-dots = np.arange(1, 6)
+dots = np.arange(1, 4)
 
 # excludes data which occured at time points after RT - rt_thresh
-rt_thresh = 0.5
+rt_thresh = 0.1
 
 # names of regressors that should enter the GLM
 r_names = ['abs_dot_y', 'abs_dot_x', 'dot_y', 'dot_x', 'intercept', 
@@ -53,13 +53,13 @@ trialregs_dot = 0
 #srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
 
 # label mode= None, lselection=[V1, V2], window=[0, 0.4]
-#srcfile = 'source_epochs_allsubs_HCPMMP1_201708151431.h5'
+srcfile = 'source_epochs_allsubs_HCPMMP1_201708151431.h5'
 
 # label mode = (abs) max
 #srcfile = 'source_epochs_allsubs_HCPMMP1_201706271717.h5'
 
 # label mode= None, lselection=pre-motor and motor areas, window=[0.3, 0.9]
-srcfile = 'source_epochs_allsubs_HCPMMP1_201710231731.h5'
+#srcfile = 'source_epochs_allsubs_HCPMMP1_201710231731.h5'
 
 srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
 
