@@ -26,7 +26,7 @@ dots = np.arange(1, 6)
 rt_thresh = -1.0
 
 # names of regressors that should enter the GLM
-r_names = ['dot_x', 'dot_y', 'entropy', 'trial_time', 'intercept', 'response']
+r_names = ['entropy', 'trial_time', 'intercept', 'response']
 R = len(r_names)
 
 # source data to use
@@ -51,14 +51,14 @@ srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
 # whether a response-aligned analysis should be run, i.e., whether time should
 # be defined with respect to the response time; if True, set timeslice below
 # providing both ends
-response_aligned = False
+response_aligned = True
 
 # time window for which to run the analysis, must be a 0-, 1- or 2-element list
 # if empty list, all times in srcfile are used for analysis;
 # if 1-element, all times starting with the given will be included in analysis;
 # if 2-element, these are the slice limits considered (right edge is inclusive)
 # note that normalisation of data is still over all times in srcfile
-timeslice = []
+timeslice = [-200, 50]
 
 # How many permutations should be computed?
 nperm = 3
