@@ -104,12 +104,11 @@ model = rtmodels.discrete_static_gauss(dt=dotdt, maxrt=dotdt*D,
 
 #%% setup EP-ABC
 
-# normalising constant of the uniform distribution defined by distfun and 
-# epsilon; for response_dist this is: (2*epsilon for the Euclidean distance 
-# between true and sampled RT and another factor of 2 for the two possible 
-# responses - timed out responses don't occur here, because they are only a
-# point mass, i.e., one particular value of response and RT)
-veps = 2 * 2 * epsilon
+# normalising constant of the uniform distribution over the data space in
+# which samples are accepted as defined by distfun and epsilon; for 
+# response_dist this is 2*epsilon for the Euclidean distance between true 
+# and sampled RT
+veps = 2 * epsilon
 
 
 #%% inference
