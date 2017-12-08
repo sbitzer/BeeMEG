@@ -12,6 +12,7 @@ import helpers
 import pandas as pd
 import numpy as np
 import source_statistics as ss
+import gc
 
 
 #%% options
@@ -26,7 +27,7 @@ sfreq = 100
 hfreq = sfreq
 
 # time window within an epoch to consider
-window = [0.3, 0.9]
+window = [0, 2.5]
 
 # chtype=True for all MEG-channels, chtype='mag' for magnetometers
 chtype = True
@@ -49,11 +50,11 @@ else:
 inv_depth = 0.8
 
 # parcellation on which labels are based
-parc = 'HCPMMP1'
+parc = 'HCPMMP1_5_8'
 
 # specific labels that should be stored, all others are discarded,
 # use empty list to indicate that all labels should be stored
-sections = [6, 8]
+sections = []
 anames = ss.Glasser_areas[ss.Glasser_areas['main section'].apply(
         lambda r: r in sections)]['area name']
 lselection = (  list(anames.apply(lambda n: 'L_%s_ROI-lh' % n))
@@ -61,7 +62,7 @@ lselection = (  list(anames.apply(lambda n: 'L_%s_ROI-lh' % n))
 
 # set to None to keep original source points, 
 # otherwise see MNE's extract_label_time_course for available modes
-label_mode = None
+label_mode = 'mean'
 
 options = pd.Series({'chtype': chtype, 'sfreq': sfreq, 'hfreq': hfreq, 
                      'method': method, 'fwd_surf_ori': fwd_surf_ori,
@@ -147,9 +148,13 @@ for sub in subjects:
     # initialise time course store, because we didn't know times before
     times = (epochs.times * 1000).round().astype(int)
     
-    # compute!
-    stcs = mne.minimum_norm.apply_inverse_epochs(
-            epochs, inverse_operator, lambda2, method=method, pick_ori=None)
+    # compute! out comes a generator object through which you can loop, then
+    # only when an individual element is accessed the minimum norm estimate 
+    # will be generated - this way you never need to hold all results in memory
+    # at once
+    stcs_gen = mne.minimum_norm.apply_inverse_epochs(
+            epochs, inverse_operator, lambda2, method=method, pick_ori=None,
+            return_generator=True)
     
     labels = mne.read_labels_from_annot(subject, parc=parc, hemi='both')
     if lselection:
@@ -159,48 +164,38 @@ for sub in subjects:
     # the defined source space which may have a much wider mesh, the actually
     # used number of source points per label would be len(vertno) below
     label_nv = pd.DataFrame(np.array([len(l) for l in labels])[None, :], 
-                                index=pd.Index([sub], name='subject'), 
-                                columns=labelnames, dtype=int)
+                            index=pd.Index([sub], name='subject'), 
+                            columns=labelnames, dtype=int)
     
     # select source points (vertices), if no aggregation within labels
-    if label_mode is None:
-        point_tcs = []
-        for label in labels:
-            # this is only used to extract label vertices in source space
-            stc = stcs[0]
+    if label_mode is None:        
+        label_tc = []
+        for trial, stc in zip(trials, stcs_gen):
+            tc_trial = []
+            for label in labels:
+                label_stc = stc.in_label(label)
+                
+                # column names in result data frame should contain vertex 
+                # numbers
+                if label.hemi == 'lh':
+                    lnames = [label.name + '_%06d' % vno 
+                              for vno in label_stc.lh_vertno]
+                else:
+                    lnames = [label.name + '_%06d' % vno 
+                              for vno in label_stc.rh_vertno]
+                
+                tc_trial.append(pd.DataFrame(
+                        label_stc.data.T, 
+                        columns=pd.Index(lnames, name='label'), 
+                        index=pd.MultiIndex.from_product(
+                                [[sub], [trial], times], 
+                                names=['subject', 'trial', 'time']), 
+                        dtype=float))
             
-            # select those vertices that are both in the label and the 
-            # source space
-            if label.hemi == 'lh':
-                vertno = np.intersect1d(stc.lh_vertno, label.vertices)
-                vertidx = np.searchsorted(stc.lh_vertno, vertno)
-            elif label.hemi == 'rh':
-                vertno = np.intersect1d(stc.rh_vertno, label.vertices)
-                vertidx = (  stc.lh_vertno.size 
-                           + np.searchsorted(stc.rh_vertno, vertno))
-            else:
-                raise ValueError('label %s has invalid hemi' % label.name)
-            
-            # create result data frame with vertex numbers in label names
-            lnames = [label.name + '_%06d' % vno for vno in vertno]
-            point_tc = pd.DataFrame([], 
-                                    columns=pd.Index(lnames, name='label'), 
-                                    index=pd.MultiIndex.from_product(
-                                            [[sub], trials, times], 
-                                            names=['subject', 'trial', 'time']), 
-                                    dtype=float)
-            
-            # store source data in result data frame
-            point_tc.loc[(sub, slice(None), slice(None)), :] = np.concatenate(
-                    [stc.data[vertidx, :].T for stc in stcs])
-            # alternatively:
-            # point_tc.loc[(sub, slice(None), slice(None)), :] = np.concatenate(
-            #         [stc.in_label(label).data.T for stc in stcs])
-            
-            point_tcs.append(point_tc)
+            label_tc.append(pd.concat(tc_trial, axis=1))
         
         # just using label_tc as name to maintain backward compatibility
-        label_tc = pd.concat(point_tcs, axis=1)
+        label_tc = pd.concat(label_tc)
     else:
         label_tc = pd.DataFrame([], 
                                 columns=pd.Index(labelnames, name='label'), 
@@ -208,11 +203,11 @@ for sub in subjects:
                                         [[sub], trials, times], 
                                         names=['subject', 'trial', 'time']), 
                                 dtype=float)
-                            
-        for trial, stc in zip(trials, stcs):
-            label_tc.loc[(sub, trial, slice(None)), :] = (
-                    stc.extract_label_time_course(
-                            labels, fwd['src'], mode=label_mode).T)
+        
+        label_tc_gen = mne.extract_label_time_course(
+                stcs_gen, labels, fwd['src'], mode='mean')
+        for trial, tc in zip(trials, label_tc_gen):
+            label_tc.loc[(sub, trial, slice(None)), :] = tc.T
         
     if fresh:
         mean = label_tc.mean()
@@ -222,6 +217,8 @@ for sub in subjects:
     with pd.HDFStore(file, mode='a', complib='blosc', complevel=7) as store:
         store.append('label_nv', label_nv)
         store.append('label_tc', label_tc)
+        
+    gc.collect()
 
         
 #%% save mean and std across all data points for each label

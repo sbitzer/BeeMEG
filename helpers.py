@@ -221,10 +221,10 @@ def load_meg_epochs_from_sdat(subject, megdatadir=megdatadir):
     # conveniently, the order of the channels in the matlab data is the same as
     # the order given by the raw fif-file (see channel_names.mat which I extracted
     # from variable hdr in one of the files in meg_original_data)
-    mat = loadmat(os.path.join(megdatadir, '%02d_sdat.mat' % subject))
+    mat = loadmat(os.path.join(megdatadir, '%02d_sdatr.mat' % subject))
 
     # construct full data array corresponding to the channels defined in info
-    data = np.zeros((480, 322, 301))
+    data = np.zeros((480, 322, 701))
     
     # MEG data
     data[:, :306, :] = mat['smeg']
@@ -261,7 +261,7 @@ def load_meg_epochs_from_sdat(subject, megdatadir=megdatadir):
     info['sfreq'] = 1 / dt
         
     # create events array
-    events = np.c_[np.arange(480), np.full(480, 301, dtype=int), 
+    events = np.c_[np.arange(480), np.full(480, 701, dtype=int), 
                    np.zeros(480, dtype=int)]
     
     # type of event
