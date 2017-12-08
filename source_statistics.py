@@ -14,6 +14,8 @@ import itertools
 import os
 import seaborn as sns
 from scipy.interpolate import interp1d
+import scipy.stats
+import math
 import mne
 from warnings import warn
 import matplotlib.pyplot as plt
@@ -403,9 +405,6 @@ def get_significant_regions(measure_series, threshold,
 #     Psychological bulletin, vol. 87, iss. 2, p. 245, 1980.
 # [5] G. Y. Zou, "Toward using confidence intervals to compare correlations.," 
 #     Psychological methods, vol. 12, iss. 4, pp. 399-413, 2007. 
-import scipy.stats
-import math
-
 def rz_ci(r, n, conf_level = 0.95):
     zr_se = pow(1/(n - 3), .5)
     moe = scipy.stats.norm.ppf(1 - (1 - conf_level)/float(2)) * zr_se
@@ -473,7 +472,7 @@ except ImportError:
     print('No GPy found. Skipping definition of GP functions in '
           'source_statistics.')
 else:
-    def plot_gp_result(ax, xpred, gpm, color, label, xx=None):
+    def plot_gp_result(ax, xpred, gpm, color, label, xx=None, coverage=0.95):
         if xx is None:
             xx = xpred
             
@@ -484,18 +483,21 @@ else:
         
         lw = plt.rcParams["lines.linewidth"] * 1.5
         
+        stdmult = scipy.stats.norm.ppf([0.5 - coverage/2, 0.5 + coverage/2])
+        
         # Draw the regression line and confidence interval
         ax.plot(xx, gpmean, color=color, lw=lw, label=label)
-        ax.fill_between(xx[:, 0], gpmean - 2 * gpstd, gpmean + 2 * gpstd, 
-                        facecolor=color, alpha=.15)
+        ax.fill_between(xx[:, 0], gpmean + stdmult[0] * gpstd, 
+                        gpmean + stdmult[1] * gpstd, facecolor=color, 
+                        alpha=.15)
         
-    def fitgp(xvals, data, Z, biasstd=1.0, smooth=True):
+    def fitgp(xvals, data, Zvar=None, biasstd=1.0, smooth=True, gptype='sparse'):
         if data.ndim < 2:
             data = data[:, None]
         if xvals.ndim < 2:
             xvals = xvals[:, None]
-        if Z.ndim < 2:
-            Z = Z[:, None]
+        if Zvar.ndim < 2:
+            Zvar = Zvar[:, None]
         
         # choose basic covariance function, the squared exponential (i.e. RBF) is 
         # known to be very smooth while the Matern-class allows for local bumps;
@@ -506,8 +508,8 @@ else:
         else:
             kern = GPy.kern.Matern32(1)
         
-        # reasonable initial value for lengthscale
-        kern.lengthscale = xvals.std()
+        # reasonable initial value for lengthscale: half of the xrange
+        kern.lengthscale = (xvals.max() - xvals.min()) / 2
         
         if biasstd:
             # the bias kernel adds a constant to the covariance function which
@@ -517,16 +519,23 @@ else:
             # you cannot interpret kern.Bias.variance as the fitted intercept!
             kern += GPy.kern.Bias(1, biasstd ** 2)
         
-        gpm = GPy.models.SparseGPRegression(xvals, data, kernel=kern, Z=Z)
-        
-        # set noise variance to a reasonable initial value
-        gpm.likelihood.variance = data.var()
-        
-        # do not optimise inducing inputs (makes no big difference at least for 
-        # comparison of dot_x and sum_dot_x in individual subjects, or pooled, 
-        # because the inducing inputs move only minimally from their initial 
-        # values and the results are very similar)
-    #    gpm.Z.fix()
+        if gptype == 'sparse':
+            gpm = GPy.models.SparseGPRegression(xvals, data, kernel=kern, 
+                                                Z=Zvar)
+            
+            # set noise variance to a reasonable initial value for optimisation
+            gpm.likelihood.variance = data.var()
+            
+            # do not optimise inducing inputs (makes no big difference at least for 
+            # comparison of dot_x and sum_dot_x in individual subjects, or pooled, 
+            # because the inducing inputs move only minimally from their initial 
+            # values and the results are very similar)
+#            gpm.Z.fix()
+        elif gptype == 'heteroscedastic':
+            gpm = GPy.models.GPHeteroscedasticRegression(xvals, data,
+                                                         kernel=kern)
+            gpm.het_Gauss.variance = Zvar
+            gpm.het_Gauss.variance.fix()
         
         gpm.optimize()
         
@@ -534,8 +543,22 @@ else:
         
     
     def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None, 
-                  line_kws=None, scatter_kws=None, xrange=[-1.5, 1.5]):
-        gpm = fitgp(rdata[r_name], rdata[label], np.linspace(*xrange, num=15))
+                  line_kws=None, scatter_kws=None, xrange=[-1.5, 1.5],
+                  gp_kws={'gptype': 'sparse'}):
+        
+        if gp_kws['gptype'] == 'sparse':
+            X = rdata[r_name]
+            Y = rdata[label]
+            Zvar = np.linspace(*xrange, num=15)
+        elif gp_kws['gptype'] == 'heteroscedastic':
+            # get mean and variance of data points associated with distinct x
+            grouped = rdata.groupby(r_name)
+            
+            Y = grouped[label].mean()
+            X = Y.index.values
+            Zvar = grouped[label].var() / grouped[label].count()
+        
+        gpm = fitgp(X, Y, Zvar, **gp_kws)
         
         xpred = np.linspace(*xrange, num=200)[:, None]
         
