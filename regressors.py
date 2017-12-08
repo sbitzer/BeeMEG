@@ -366,86 +366,67 @@ def dotcount(trt):
     return dcs.reorder_levels(['subject', 'trial', 'time']).sort_index()
 
 
-def accev_time(trt, delay=0.3):
-    """Computes assumed value of accumulated evidence at given time points.
+def sumx_time(trt, delay=0.3, unobserved_val=np.nan):
+    """Computes sum of x-coordinates at given time points.
     
-        The assumption is that accumulated evidence will change after a given
-        delay from the occurrence of a dot. I use sum_dot_x_prev as base 
-        measure of accumulated evidence, because it fluctuates together with 
-        the log posterior ratio (lpr) and only differs by the offset given by
-        the bias which is constant for each subject and therefore anyway will
-        only move into the intercept. Furthermore, the lpr is sometimes 
-        undefined for late time points, because the model predicted that 
-        responses will be made before these data points. This is no issue with
-        sum_dot_x_prev.
+        The assumption is that this represents accumulated evidence. The sum is
+        updated whenever a new dot appeared on the screen, but a delay can be
+        used to shift these updates to later time points. The delay will be the
+        same for each dot so that the sum is still updated every dotdt 
+        (100 ms).
         
-        Will take a few seconds to compute, because I have to loop through 
-        subjects and trials to limit the value of accumulated evidence for time
-        points after the response.
+        Time points which fall into [0, delay) will be set to unobserved_val.
+        Also, time points starting with RT+delay will be set to this value to 
+        account for the fact that no more dots were shown after the response.
     """
+    reg = 'sum_dot_x'
     
     trt = np.atleast_1d(trt)
     
-    file = os.path.join(helpers.resultsdir, 'accev_time_cache.h5')
+    # this associates each time point with a dot
+    # discrete time points are assumed to belong to forward bins: 
+    # time index of t stands for the time window [t, t+dt]
+    # for delay=0, times 0-0.09 map to dot1, 0.1-0.19 to dot2 and so on
+    # the delay shifts the series by the corresponding time steps
     
-    cached = False
-    try:
-        with pd.HDFStore(file, 'r') as store:
-            accev = store.select('accev_time', 'delay=delay')
-    except:
-        pass
-    else:
-        if not accev.empty:
-            times = pd.read_hdf(file, 'times')
-            if trt.size == times.size and np.all(trt == times):
-                accev = accev.xs(delay, level='delay')
-                cached = True
-        
-    if not cached:
-        dotinds = np.fmin(np.ceil(np.fmax(trt - delay, 0) / 0.1) + 1, D)
-        
-        accev = pd.concat([
-                trial_dot.sum_dot_x_prev.loc[(slice(None), ind)] 
-                for ind in dotinds],
-                keys=trt, names=['time']+trial_dot.index.names[:1])
-        accev = accev.reorder_levels(['trial', 'time']).sort_index()
-        accev = pd.concat([accev]*subjecti.size, 
-                          keys=subjecti, 
-                          names=['subject', 'trial', 'time'])
-        
-        # if trt is past RT+delay, set accev to value at RT+delay
-        
-        # get tend
-        tend = subject_trial.RT + delay
-        # get sum_dot_x_prev value at tend
-        dotinds = np.fmin(np.ceil(np.fmax(tend - delay, 0) / 0.1) + 1, D)
+    # this is the precision of the time steps in decimals
+    prec = int(np.ceil(-np.log10(np.diff(trt).min())))
+    # how often is dotdt in the requested time? convert to interges first,
+    # because otherwise numerical inaccuracies can shift the borders randomly
+    toint = lambda x: np.array(x * 10**prec, dtype=int)
+    dotinds = (toint(trt) - toint(delay)) // toint(helpers.dotdt)
+    # map all values <=0 to dot1 and set dot25 as maximum
+    dotinds = np.fmin(np.ceil(np.fmax(dotinds, 0)).astype(int) + 1, D)
     
-        for sub, trial in tend[tend < trt.max()].index:
-            tend_val = trial_dot.sum_dot_x_prev.loc[
-                    (trial, dotinds.loc[(sub, trial)])]
-            # replace all values in accev with trt > tend with tend_val
-            aloc = accev.loc[(sub, trial)].values
-            aloc[trt > tend.loc[(sub, trial)]] = tend_val
-            accev.loc[(sub, trial)] = aloc
-                
-        with pd.HDFStore(file, 'a') as store:
-            # only cache regressor, if the existing times in the cache match
-            try:
-                cache_times = store['times']
-            except:
-                cache_times = pd.Series(trt)
-                store['times'] = cache_times
-            
-            if trt.size == cache_times.size and np.all(trt == cache_times):
-                accev = pd.DataFrame(accev)
-                accev['delay'] = float(delay)
-                accev.set_index('delay', append=True, inplace=True)
-                accev = accev.iloc[:, 0]
-                
-                store.append('accev_time', accev)
-                
-                accev = accev.xs(delay, level='delay')
-            
+    # get the sum_dot_x values
+    accev = pd.concat([
+            trial_dot[reg].loc[(slice(None), ind)] 
+            for ind in dotinds],
+            keys=trt, names=['time']+trial_dot.index.names[:1])
+    
+    # set all values at times < delay to unobserved_val
+    accev.loc[(trt[trt < delay], slice(None))] = unobserved_val
+    
+    # bring to standard format and expand to every subject
+    accev = accev.reorder_levels(['trial', 'time']).sort_index()
+    accev = pd.concat([accev]*subjecti.size, 
+                      keys=subjecti, 
+                      names=['subject', 'trial', 'time'])
+    
+    # after RT no new dots were shown - assume that the dots shown up to 
+    # that time point are processed with the selected delay, but then set 
+    # to nan
+    
+    # get tend
+    tend = subject_trial.RT + delay
+    # loop over trials with RT so early that some requested
+    # time points fall after RT+delay
+    for sub, trial in tend[tend < trt.max()].index:
+        # replace all values in accev with trt > tend with tend_val
+        aloc = accev.loc[(sub, trial)].values
+        aloc[trt > tend.loc[(sub, trial)]] = unobserved_val
+        accev.loc[(sub, trial)] = aloc
+        
     return accev
     
 
@@ -501,7 +482,7 @@ def dotx_time(trt, delay=0.3):
 subject_trial_time = {'motoprep': motoprep, 
                       'motoresponse': motoresp, 
                       'dotcount': dotcount,
-                      'accev_time': accev_time,
+                      'sumx_time': sumx_time,
                       'dotx_time': dotx_time}
 
 
