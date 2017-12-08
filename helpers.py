@@ -19,6 +19,7 @@ import mne
 dotfile = 'batch_dots_pv2.mat'
 
 # directories
+figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 basedir = 'data'
 behavdatadir = os.path.join(basedir, 'meg_behav')
 megdatadir = os.path.join(basedir, 'meg_final_data')
