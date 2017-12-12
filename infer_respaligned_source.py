@@ -26,7 +26,7 @@ srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
 
 srcfile = os.path.join(ss.bem_dir, srcfile)
 
-area = 'v23ab'
+area = '4'
 
 normsrc = True
 
@@ -34,10 +34,18 @@ labels = ['L_%s_ROI-lh' % area, 'R_%s_ROI-rh' % area]
 
 delay = 400
 
-timeslice = [-1000, delay]
+resp_align = True
 
-resptimes = pd.Index(np.arange(timeslice[0], timeslice[1]+10, step=10), 
-                               name='time')
+if resp_align:
+    timeslice = [-1000, delay]
+    fbase = 'response-aligned'
+else:
+    timeslice = [delay, 1500]
+    fbase = 'firstdot-aligned'
+    
+times = pd.Index(np.arange(timeslice[0], timeslice[1]+10, step=10), 
+                 name='time')
+
 
 #%% example data
 subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
@@ -45,11 +53,11 @@ S = subjects.size
 
 with pd.HDFStore(srcfile, 'r') as store:
     epochs = store.select('label_tc', 'subject=2')
-times = epochs.index.levels[2]
+epochtimes = epochs.index.levels[2]
 
 
 #%% define the function which reindexes time to response-aligned
-epochtimes = epochs.index.levels[2]
+choices = regressors.subject_trial.response.loc[subjects]
 rts = regressors.subject_trial.RT.loc[subjects] * 1000
 
 # if RTs are an exact multiple of 5, numpy will round both 10+5 and 20+5 to
@@ -83,12 +91,15 @@ def load_subject(sub):
     with pd.HDFStore(srcfile, 'r') as store:
         epochs = store.select('label_tc', 'subject=sub')[labels]
     
-    # get response-aligned times of data points
-    epochs.index = rtindex(sub)
-    
-    # exclude trials which were timed out (were coded as RT=5000 ms)
-    epochs = epochs.loc[(rts.loc[sub][rts.loc[sub] <= 2500].index.values, 
-                         slice(None))]
+    if resp_align:
+        # get response-aligned times of data points
+        epochs.index = rtindex(sub)
+        
+        # exclude trials which were timed out (were coded as RT=5000 ms)
+        epochs = epochs.loc[(rts.loc[sub][rts.loc[sub] <= 2500].index.values, 
+                             slice(None))]
+    else:
+        epochs = epochs.loc[sub]
     
     return epochs
 
@@ -104,45 +115,61 @@ if normsrc:
     alldata = (alldata - epochs_mean[labels]) / epochs_std[labels]
 
     
-#%% create response-aligned sum_dot_x regressor
+#%% create response-aligned design matrix
 
-# load first dot onset aligned, time indexed sum_dot_x values
-sumx = regressors.sumx_time(times.values / 1000, delay / 1000)
+r_names = ['dot_x_time', 'dot_y_time', 'percupt_x_time', 'percupt_y_time', 
+           'intercept']
 
-# exclude trials in which there was no response (timed out trials)
-def get_response_trials(sub):
-    sumxsub = sumx.loc[sub]
-    rtssub = rts.loc[sub]
-    return sumxsub.loc[(rtssub[rtssub != 5000].index, slice(None))]
+DM = subject_DM.get_trial_time_DM(r_names, epochtimes.values / 1000, 
+                                  delay=delay / 1000, normalise=True, 
+                                  subjects=subjects)
 
-sumx = pd.concat([get_response_trials(sub) for sub in subjects],
-                 keys=subjects, names=['subject', 'trial', 'time'])
+DM.sort_index(axis=1, inplace=True)
 
+if resp_align:
+    # exclude trials in which there was no response (timed out trials)
+    def get_response_trials(sub):
+        DMsub = DM.loc[sub]
+        rtssub = rts.loc[sub]
+        return DMsub.loc[(rtssub[rtssub != helpers.toresponse[1] * 1000].index, 
+                          slice(None)), :]
+    
+    DM = pd.concat([get_response_trials(sub) for sub in subjects],
+                    keys=subjects, names=['subject', 'trial', 'time'])
+    
 # now data and regressor are in the same order, so simply assign the 
 # response-aligned index of alldata to the regressor values to get 
-# response-aligned regressor values
-sumx.index = alldata.index
+# response-aligned regressor values, if not response-aligned this transforms
+# the time index from seconds to milliseconds
+DM.index = alldata.index
 
 # count the trials in which we have a regressor value at the chosen times
 trial_counts = pd.concat([
-        sumx.loc[sub].groupby(level='time').count() 
+        DM.loc[sub, r_names[0]].groupby(level='time').count() 
         for sub in subjects], keys=subjects, names=['subject', 'time'])
-
-sumx_normalised = subject_DM.normfun(sumx)
     
 
 #%% check relationship at particular time point before response
-time = -650
+r_name = 'dot_x_time'
+time = -100
 
-data = pd.concat([sumx.xs(time, level='time'), alldata.xs(time, level='time')],
-                 axis=1)
+data = pd.concat([DM.xs(time, level='time')[r_name], 
+                  alldata.xs(time, level='time')], axis=1)
 data = data.dropna()
 
+# flip x-values according to the eventual choice; this allows you to check 
+# whether a linear relationship only results because there are only two levels
+# of activity (one for left and one for right choice), but these are mixed with
+# a probability (of choosing left or right) given by the x-value; if this is 
+# the case you should see the two levels of activity after flipping instead of
+# a linear relationship
+data.dot_x_time *= np.sign(data.dot_x_time) * np.sign(choices.loc[data.index])
+
 color = 'k'
-xrange = data.sum_dot_x.quantile([0.1, 0.9])
+xrange = data[r_name].quantile([0.1, 0.9])
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(7.5, 4.5))
 for i in range(2):
-    gpm = ss.gpregplot('sum_dot_x', labels[i], data, x_estimator=np.mean, x_bins=8,
+    gpm = ss.gpregplot(r_name, labels[i], data, x_estimator=np.mean, x_bins=8,
                        line_kws={'color': color, 'label': '%d ms' % time},
                        scatter_kws={'color': color}, xrange=xrange, ax=axes[i])
     
@@ -150,47 +177,46 @@ for i in range(2):
 #%% standard summary statistics inference
 first_level = pd.DataFrame([],
         index=pd.MultiIndex.from_product(
-                [labels, resptimes], names=['label', 'time']), 
+                [labels, times], names=['label', 'time']), 
         columns=pd.MultiIndex.from_product(
-                [subjects, ['beta', 'bse'], ['intercept', 'sum_dot_x']], 
+                [subjects, ['beta', 'bse'], DM.columns], 
                 names=['subject', 'measure', 'regressor']), dtype=float)
 first_level.sort_index(axis=1, inplace=True)
 
 second_level = pd.DataFrame([], 
         index=pd.MultiIndex.from_product(
-                [labels, resptimes], names=['label', 'time']), 
+                [labels, times], names=['label', 'time']), 
         columns=pd.MultiIndex.from_product(
-                [['mean', 'std', 'tval', 'mlog10p'], 
-                 ['intercept', 'sum_dot_x']], 
+                [['mean', 'std', 'tval', 'mlog10p'], DM.columns], 
                 names=['measure', 'regressor']), dtype=np.float64)
 second_level.sort_index(axis=1, inplace=True)
 
 for label in labels:
-    for time in resptimes:
+    for time in times:
         print('\rlabel %s, time = % 5d' % (label, time), end='', flush=True)
         
-        data = pd.concat([sumx_normalised.xs(time, level='time'), 
+        data = pd.concat([DM.xs(time, level='time'), 
                           alldata.xs(time, level='time')],
                  axis=1)
         data = data.dropna()
         
         for sub in subjects:
             datasub = data.loc[sub]
-            if datasub.size > 10:
+            if datasub.shape[0] > 30:
                 res = sm.OLS(
                         datasub[label].values, 
-                        np.c_[datasub.sum_dot_x.values, np.ones(datasub.shape[0])], 
+                        datasub[first_level.columns.levels[2]].values, 
                         hasconst=True).fit()
-                first_level.loc[(label, time), (sub, slice(None), 'sum_dot_x')] = [
-                        res.params[0], res.bse[0]]
-                first_level.loc[(label, time), (sub, slice(None), 'intercept')] = [
-                        res.params[1], res.bse[1]]
+                first_level.loc[(label, time), (sub, 'beta', slice(None))] = (
+                        res.params)
+                first_level.loc[(label, time), (sub, 'bse', slice(None))] = (
+                        res.bse)
         
         params = first_level.loc[(label, time), 
                                  (slice(None), 'beta', slice(None))]
         params = params.unstack('regressor')
         
-        params.dropna()
+        params.dropna(inplace=True)
         
         second_level.loc[(label, time), ('mean', slice(None))] = (
                 params.mean().values)
@@ -211,46 +237,63 @@ alpha = 0.01
 sl = second_level.dropna().copy()
 ss.add_measure(sl, 'mlog10p_fdr')
 
-r_colors = {'intercept': 'C0', 'sum_dot_x': 'C1'}
-r_labels = {'intercept': 'average', 'sum_dot_x': 'sum x'}
+r_name = 'dot_x_time'
+r_colors = {'intercept': 'C0', 'dot_x_time': 'C1', 'dot_y_time': 'C2', 
+            'percupt_x_time': 'C3', 'percupt_y_time': 'C4'}
+r_labels = {'percupt_y_time': '|PU|-y', 
+            'percupt_x_time': '|PU|-x',
+            'dot_x_time': 'x-coord',
+            'dot_y_time': 'y-coord',
+            'intercept': 'intercept'}
+
+# which regressors to show? 
+# add main regressor of interest to end to show it on top
+show_names = ['percupt_x_time', 'dot_y_time', 'percupt_y_time']
+show_names.append(r_name)
 
 fig, axes = plt.subplots(1, len(labels), sharey=True, figsize=(7.5, 4))
 
 for label, ax in zip(labels, axes):
     lines = {}
-    for r_name in sl.columns.levels[1]:
-        lines[r_name], = ax.plot(sl.loc[label].index, 
-                                 sl.loc[label].loc[:, (show_measure, r_name)], 
-                                 label=r_labels[r_name], 
-                                 color=r_colors[r_name])
+    for rn in show_names:
+        lines[rn], = ax.plot(sl.loc[label].index, 
+                                 sl.loc[label].loc[:, (show_measure, rn)], 
+                                 label=r_labels[rn], color=r_colors[rn])
     
     ti = sl.loc[label].index
     
     # determine whether positive or negative peaks are larger
-    mm = pd.Series([sl.loc[label].loc[:, (show_measure, 'sum_dot_x')].min(),
-                    sl.loc[label].loc[:, (show_measure, 'sum_dot_x')].max()])
+    mm = pd.Series([sl.loc[label].loc[:, (show_measure, r_name)].min(),
+                    sl.loc[label].loc[:, (show_measure, r_name)].max()])
     mm = mm[mm.abs().idxmax()]
     
     # plot markers over those time points which are significant after FDR
     significant = np.full(ti.size, mm * 1.1)
-    significant[sl.loc[label, ('mlog10p_fdr', 'sum_dot_x')] 
+    significant[sl.loc[label, ('mlog10p_fdr', r_name)] 
                 < -np.log10(alpha)] = np.nan
     ax.plot(ti, significant, '*', label='significant',
-            color=lines['sum_dot_x'].get_color())
-    ax.plot(ti[[0, -1]], [0, 0], '--k')
+            color=lines[r_name].get_color())
+    ax.plot(ti[[0, -1]], [0, 0], '--k', zorder=1)
     
     ax.set_title(label[0])
-    ax.set_xlabel('time from response (ms)')
+    if resp_align:
+        ax.set_xlabel('time from response (ms)')
+    else:
+        ax.set_xlabel('time from first dot onset (ms)')
 
-yl = ax.get_ylim()
-for ax in axes:
-    ax.plot([0, 0], yl, ':k', label='response', zorder=1)
-ax.set_ylim(yl)
+if resp_align:
+    yl = ax.get_ylim()
+    for ax in axes:
+        ax.plot([0, 0], yl, ':k', label='response', zorder=1)
+    ax.set_ylim(yl)
 
 ax.legend()
 
+axes[0].set_ylabel('estimated second-level beta')
+
+fig.tight_layout()
 fig.savefig(os.path.join(helpers.figdir, 
-                         'response-aligned_sum_dot_x_%s.png' % area), 
+                         '%s_%s_%s.png' % (fbase, r_name[:-5], area)), 
             dpi=300)
 
 
@@ -262,47 +305,58 @@ fig, ax = plt.subplots(1, figsize=(7.5, 4))
 
 cnts = trial_counts.loc[(slice(None), slice(tmin, tmax))].unstack('subject')
 
-lines = ax.plot(cnts.index, cnts.values, color=r_colors['sum_dot_x'], 
+lines = ax.plot(cnts.index, cnts.values, color=r_colors[r_name], 
                 alpha=0.5)
+
+if resp_align:
+    ax.set_xlabel('time from response (ms)')
+else:
+    ax.set_xlabel('time from first dot onset (ms)')
 ax.set_ylabel('trial count')
-ax.set_xlabel('time from response (ms)')
 ax.set_title(r_labels[r_name])
 ax.legend([lines[0]], ['single subjects'], loc='center right')
 
 fig.savefig(os.path.join(helpers.figdir, 
-                         'response-aligned_sum_dot_x_%s_trcounts.png' % area), 
-            dpi=300)
+                         '%s_%s_%s_trcounts.png' % (
+                                 fbase, r_name[:-5], area)), dpi=300)
+
 
 #%% estimate second-level time course with GPs
-color = 'k'
-xrange = [-800, -100]
-bin_width = 50
-fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(7.5, 4))
+xrange = timeslice
+bin_width = 100
+fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(7.5, 5))
 
-fl = (first_level.dropna().xs('beta', level='measure', axis=1)
+fl = (first_level.xs('beta', level='measure', axis=1)
       .stack('subject').reset_index('time'))
 fl = fl[(fl.time >= xrange[0]) & (fl.time <= xrange[1])]
 
-r_names = ['sum_dot_x']
+r_name = 'dot_x_time'
+# which regressors to show? 
+# add main regressor of interest to end to show it on top
+show_names = ['percupt_x_time', 'dot_y_time']
+show_names.append(r_name)
 
 for label, ax in zip(labels, axes):
-    for r_name in r_names:
-        color = r_colors[r_name]
-        r_label = r_labels[r_name]
+    for rn in show_names:
+        color = r_colors[rn]
+        r_label = r_labels[rn]
         
         gpm = ss.gpregplot(
-                'time', r_name, fl.loc[label], x_estimator=np.mean, 
+                'time', rn, fl.loc[label], x_estimator=np.mean, 
                 x_bins=int((xrange[1] - xrange[0]) / bin_width), 
                 line_kws={'color': color, 'label': r_label},
                 scatter_kws={'color': color}, xrange=xrange, ax=ax,
                 gp_kws={'gptype': 'heteroscedastic', 'smooth': False})
     
-    ax.plot(xrange, [0, 0], '--k')
+    ax.plot(xrange, [0, 0], '--k', zorder=1)
     ax.set_ylabel('')
     ax.set_title(label[0])
-    ax.set_xlabel('time from response (ms)')
+    if resp_align:
+        ax.set_xlabel('time from response (ms)')
+    else:
+        ax.set_xlabel('time from first dot onset (ms)')
     
-if xrange[1] >= 0:
+if resp_align and xrange[1] >= 0:
     yl = axes[0].get_ylim()
     for ax in axes:
         ax.plot([0, 0], yl, ':k', label='response', zorder=1)
@@ -311,24 +365,25 @@ if xrange[1] >= 0:
 axes[0].set_ylabel('estimated second-level beta')
 axes[1].legend()
 
+fig.tight_layout()
 fig.savefig(os.path.join(helpers.figdir, 
-                         'response-aligned_sum_dot_x_%s_gp.png' % area), 
-            dpi=300)
+                         '%s_%s_%s_gp.png' % (
+                                 fbase, r_name[:-5], area)), dpi=300)
 
 
 #%% 
 grouped = fl.loc[label].groupby('time')
-Y = grouped[r_name].mean()
+Y = grouped[rn].mean()
 X = Y.index.values
-Zvar = grouped[r_name].var()
+Zvar = grouped[rn].var()
 xpred = np.linspace(*xrange, num=200)[:, None]
 
 fig, ax = plt.subplots()
 
-ss.plot_gp_result(ax, xpred, gpm, r_colors['sum_dot_x'], 'sum x')
+ss.plot_gp_result(ax, xpred, gpm, r_colors[rn], r_labels[rn])
 
-ax.errorbar(X, Y, np.sqrt(Zvar / grouped[r_name].count()), 
-            color=r_colors['sum_dot_x'])
+ax.errorbar(X, Y, np.sqrt(Zvar / grouped[rn].count()), 
+            color=r_colors[rn])
 
 
 #%% create Stan model
