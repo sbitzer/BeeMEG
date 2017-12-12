@@ -71,6 +71,11 @@ trial_dot['saccade_y'] = trial_dot['move_y']
 trial_dot.loc[(slice(None), 1), 'saccade_y'] = trial_dot.loc[(slice(None), 1), 
                                                              'dot_y']
 
+# perceptual update of Wyart et al. (2014): the magnitude of the change in a
+# perceptual variable which here is the dot-position, note that for us 
+# percupt_x is also the magnitude of their decision update
+trial_dot['percupt_x'] = trial_dot.saccade_x.abs()
+trial_dot['percupt_y'] = trial_dot.saccade_y.abs()
 
 # how far did the dot jump?
 trial_dot['move_dist'] = np.r_[np.zeros((1, dotpos.shape[2])), 
@@ -312,7 +317,10 @@ def motoprep(trt):
             for t in trt],
             keys=trt, names=['time']+subject_trial.index.names)
     
-    return mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+    mprep = mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+    mprep.name = 'motoprep'
+    
+    return mprep
 
 
 def motoresp(trt):
@@ -325,7 +333,10 @@ def motoresp(trt):
             for t in trt],
             keys=trt, names=['time']+subject_trial.index.names)
     
-    return mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+    mprep = mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+    mprep.name = 'motoresponse'
+    
+    return mprep
 
 # number of dots
 D = doti.max()
@@ -347,7 +358,10 @@ def motoresp_lin(trt):
             for t in trt],
             keys=trt, names=['time']+subject_trial.index.names)
     
-    return mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+    mprep = mprep.reorder_levels(['subject', 'trial', 'time']).sort_index()
+    mprep.name = 'motoresp_lin'
+    
+    return mprep
        
 
 dcsig = lambda t: np.fmax(np.floor(t * 10) + 1, 0)
@@ -363,25 +377,30 @@ def dotcount(trt):
             for dc in dcs],
             keys=trt, names=['time']+subject_trial.index.names)
     
-    return dcs.reorder_levels(['subject', 'trial', 'time']).sort_index()
-
-
-def sumx_time(trt, delay=0.3, unobserved_val=np.nan):
-    """Computes sum of x-coordinates at given time points.
+    dcs = dcs.reorder_levels(['subject', 'trial', 'time']).sort_index()
+    dcs.name = 'dotcount'
     
-        The assumption is that this represents accumulated evidence. The sum is
-        updated whenever a new dot appeared on the screen, but a delay can be
-        used to shift these updates to later time points. The delay will be the
-        same for each dot so that the sum is still updated every dotdt 
-        (100 ms).
-        
+    return dcs
+
+
+def dot_to_time(trt, delay=0.3, r_name='dot_x', unobserved_val=np.nan):
+    """Translates a trial-dot-regressor into a trial-time-regressor.
+    
+        I.e., it associates each time point in a trial with the value of the 
+        selected regressor given by when the corresponding dot was shown in the
+        trial. A delay can be given which shifts the time points associated 
+        with the sequence of dots. This can be used to account for knowledge 
+        that a regressor will be represented always a given time after dot 
+        onset.
+    
         Time points which fall into [0, delay) will be set to unobserved_val.
         Also, time points starting with RT+delay will be set to this value to 
         account for the fact that no more dots were shown after the response.
     """
-    reg = 'sum_dot_x'
-    
     trt = np.atleast_1d(trt)
+    
+    if r_name.endswith('_time'):
+        r_name = r_name[:-5]
     
     # this associates each time point with a dot
     # discrete time points are assumed to belong to forward bins: 
@@ -398,18 +417,21 @@ def sumx_time(trt, delay=0.3, unobserved_val=np.nan):
     # map all values <=0 to dot1 and set dot25 as maximum
     dotinds = np.fmin(np.ceil(np.fmax(dotinds, 0)).astype(int) + 1, D)
     
-    # get the sum_dot_x values
-    accev = pd.concat([
-            trial_dot[reg].loc[(slice(None), ind)] 
+    # get the regressor values
+    reg = pd.concat([
+            trial_dot[r_name].loc[(slice(None), ind)] 
             for ind in dotinds],
             keys=trt, names=['time']+trial_dot.index.names[:1])
     
+    # rename the regressor to indicate that it is the time version
+    reg.name += '_time'
+    
     # set all values at times < delay to unobserved_val
-    accev.loc[(trt[trt < delay], slice(None))] = unobserved_val
+    reg.loc[(trt[trt < delay], slice(None))] = unobserved_val
     
     # bring to standard format and expand to every subject
-    accev = accev.reorder_levels(['trial', 'time']).sort_index()
-    accev = pd.concat([accev]*subjecti.size, 
+    reg = reg.reorder_levels(['trial', 'time']).sort_index()
+    reg = pd.concat([reg]*subjecti.size, 
                       keys=subjecti, 
                       names=['subject', 'trial', 'time'])
     
@@ -423,67 +445,18 @@ def sumx_time(trt, delay=0.3, unobserved_val=np.nan):
     # time points fall after RT+delay
     for sub, trial in tend[tend < trt.max()].index:
         # replace all values in accev with trt > tend with tend_val
-        aloc = accev.loc[(sub, trial)].values
-        aloc[trt > tend.loc[(sub, trial)]] = unobserved_val
-        accev.loc[(sub, trial)] = aloc
+        rloc = reg.loc[(sub, trial)].values
+        rloc[trt > tend.loc[(sub, trial)]] = unobserved_val
+        reg.loc[(sub, trial)] = rloc
         
-    return accev
-    
-
-def dotx_time(trt, delay=0.3):
-    """Computes assumed value of accumulated evidence at given time points.
-    
-        The assumption is that accumulated evidence will change after a given
-        delay from the occurrence of a dot. I use sum_dot_x_prev as base 
-        measure of accumulated evidence, because it fluctuates together with 
-        the log posterior ratio (lpr) and only differs by the offset given by
-        the bias which is constant for each subject and therefore anyway will
-        only move into the intercept. Furthermore, the lpr is sometimes 
-        undefined for late time points, because the model predicted that 
-        responses will be made before these data points. This is no issue with
-        sum_dot_x_prev.
-        
-        Will take a few seconds to compute, because I have to loop through 
-        subjects and trials to limit the value of accumulated evidence for time
-        points after the response.
-    """
-    
-    trt = np.atleast_1d(trt)
-    
-    # only times from delay onwards need to be chosen from dot_x
-    tind = trt > delay
-    N0 = np.logical_not(tind).sum()
-    
-    dotinds = np.fmin(np.ceil(np.fmax(trt[tind] - delay, 0) / 0.1), D)
-    
-    dotx = pd.concat(
-            [pd.Series(np.zeros(triali.size), index=triali) for i in range(N0)] 
-            + [trial_dot.dot_x.loc[(slice(None), ind)] for ind in dotinds],
-            keys=trt, names=['time', 'trial'])
-    dotx = dotx.reorder_levels(['trial', 'time']).sort_index()
-    dotx = pd.concat([dotx]*subjecti.size, 
-                     keys=subjecti, 
-                     names=['subject', 'trial', 'time'])
-    
-    # if trt is past RT+delay, dotx to 0
-    
-    # get tend
-    tend = subject_trial.RT + delay
-    
-    for sub, trial in tend[tend < trt.max()].index:
-        # replace all values in dotx with trt > tend with 0
-        aloc = dotx.loc[(sub, trial)].values
-        aloc[trt > tend.loc[(sub, trial)]] = 0
-        dotx.loc[(sub, trial)] = aloc
-            
-    return dotx
+    return reg
 
 
 subject_trial_time = {'motoprep': motoprep, 
                       'motoresponse': motoresp, 
+                      'motoresp_lin': motoresp_lin,
                       'dotcount': dotcount,
-                      'sumx_time': sumx_time,
-                      'dotx_time': dotx_time}
+                      'dot_to_time': dot_to_time}
 
 
 #%% categorising regressors according to their name
@@ -492,7 +465,8 @@ def get_regressor_category(r_name):
         return 'trialreg'
     elif r_name in trial_dot.columns or r_name in subject_trial_dot.columns:
         return 'dotreg'
-    elif r_name in ['motoprep']:
+    elif (r_name in ['motoprep', 'motoresponse', 'motoresp_lin', 'dotcount'] 
+          or r_name in trial_dot.columns.map(lambda x: x + '_time')):
         return 'timereg'
     elif r_name in ['intercept', 'constant']:
         return 'constreg'

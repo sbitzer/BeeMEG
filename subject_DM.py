@@ -13,6 +13,37 @@ import seaborn as sns
 
 
 #%% 
+def get_trial_time_DM(r_names, trt, subjects=None, delay=0, 
+                      unobserved_val=np.nan, normalise=False):
+    if np.isscalar(delay):
+        delay = {r_name: delay for r_name in r_names}
+    
+    assert set(r_names) == delay.keys()
+    
+    # collect all regressors
+    DM = []
+    add_intercept = False
+    for r_name in r_names:
+        if r_name == 'intercept':
+            add_intercept = True
+        elif r_name.endswith('_time'):
+            DM.append(regressors.dot_to_time(trt, delay[r_name], r_name, 
+                                             unobserved_val))
+        else:
+            DM.append(regressors.subject_trial_time[r_name](trt))
+        
+    # concatenate them into DataFrame
+    DM = pd.concat(DM, axis=1)
+    
+    if subjects is not None and len(subjects) > 0:
+        DM = DM.loc[subjects]
+        
+    if add_intercept:
+        DM['intercept'] = 1
+        
+    return normalise_DM(DM, normalise)
+
+
 def get_trial_DM(dots=5, subjects=None, r_names=['dot_y', 'surprise', 
                  'logpost_left', 'entropy', 'trial_time', 'intercept'],
                  normalise=False):
