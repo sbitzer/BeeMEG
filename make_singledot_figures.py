@@ -50,7 +50,7 @@ R = len(regs)
 
 measure = 'mean'
 #sensor = 'MEG0741'
-sensor = 'R_4_ROI-rh'
+sensor = 'L_v23ab_ROI-lh'
 
 fig, axes = plt.subplots(R, 1, sharex=True, sharey=True, figsize=[6, 8])
 axes[0].set_title('x-coordinate (%s)' % sensor)
@@ -65,8 +65,18 @@ for r, reg in enumerate(regs):
                 second_level.loc[(p, sensor, slice(None)), (measure, reg)],
                 ':', color=line.get_color(), lw=1)
     axes[r].set_ylabel('dot %s' % reg[-1])
+    
+    xl = axes[r].get_xlim()
+    axes[r].plot(xl, [0, 0], '--k', zorder=1)
+    axes[r].set_xlim(xl)
 
-axes[-1].legend([line, pl], ['data', 'permuted'])
+yl = axes[0].get_ylim()
+for ax, reg in zip(axes, regs):
+    onsetl, = ax.plot(pd.np.ones(2) * (int(reg[-1]) - 1) * 100, yl, ':k', 
+                      zorder=1, label='dot onset')
+axes[0].set_ylim(yl)
+
+axes[-1].legend([line, pl, onsetl], ['data', 'permuted', 'dot onset'])
 axes[-1].set_xlabel('time (ms)')
 
 fig.subplots_adjust(left=0.1, bottom=0.06, right=0.95, top=0.96, hspace=0.18)
