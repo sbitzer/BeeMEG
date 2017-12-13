@@ -36,6 +36,12 @@ delay = 400
 
 resp_align = True
 
+# allows you to exclude trials based on response-aligned time in first dot 
+# onset aligned analysis: all trials with response-aligned time >= toolate will
+# be removed from regression analysis, set to 5000 or higher to include all 
+# available trials
+toolate = 5000
+
 if resp_align:
     timeslice = [-1000, delay]
     fbase = 'response-aligned'
@@ -45,6 +51,15 @@ else:
     
 times = pd.Index(np.arange(timeslice[0], timeslice[1]+10, step=10), 
                  name='time')
+
+r_colors = {'intercept': 'C0', 'sum_dot_x_time': 'C1', 'dot_y_time': 'C2', 
+            'percupt_x_time': 'C3', 'percupt_y_time': 'C4'}
+r_labels = {'percupt_y_time': 'PU-y', 
+            'percupt_x_time': 'PU-x',
+            'sum_dot_x_time': 'sum-x',
+            'dot_y_time': 'y-coord',
+            'intercept': 'intercept'}
+r_names = list(r_labels.keys())
 
 
 #%% example data
@@ -116,10 +131,6 @@ if normsrc:
 
     
 #%% create response-aligned design matrix
-
-r_names = ['dot_x_time', 'dot_y_time', 'percupt_x_time', 'percupt_y_time', 
-           'intercept']
-
 DM = subject_DM.get_trial_time_DM(r_names, epochtimes.values / 1000, 
                                   delay=delay / 1000, normalise=True, 
                                   subjects=subjects)
@@ -143,15 +154,10 @@ if resp_align:
 # the time index from seconds to milliseconds
 DM.index = alldata.index
 
-# count the trials in which we have a regressor value at the chosen times
-trial_counts = pd.concat([
-        DM.loc[sub, r_names[0]].groupby(level='time').count() 
-        for sub in subjects], keys=subjects, names=['subject', 'time'])
-    
 
 #%% check relationship at particular time point before response
-r_name = 'dot_x_time'
-time = -100
+r_name = 'sum_dot_x_time'
+time = 30
 
 data = pd.concat([DM.xs(time, level='time')[r_name], 
                   alldata.xs(time, level='time')], axis=1)
@@ -163,7 +169,7 @@ data = data.dropna()
 # a probability (of choosing left or right) given by the x-value; if this is 
 # the case you should see the two levels of activity after flipping instead of
 # a linear relationship
-data.dot_x_time *= np.sign(data.dot_x_time) * np.sign(choices.loc[data.index])
+data[r_name] *= np.sign(data[r_name]) * np.sign(choices.loc[data.index])
 
 color = 'k'
 xrange = data[r_name].quantile([0.1, 0.9])
@@ -192,13 +198,23 @@ second_level = pd.DataFrame([],
 second_level.sort_index(axis=1, inplace=True)
 
 for label in labels:
+    trial_counts = []
+    
     for time in times:
         print('\rlabel %s, time = % 5d' % (label, time), end='', flush=True)
         
         data = pd.concat([DM.xs(time, level='time'), 
                           alldata.xs(time, level='time')],
                  axis=1)
+        
+        # remove trials which are > -100 to response
+        if not resp_align:
+            data = data.loc[rts[(time - rts) < toolate].index]
+        
         data = data.dropna()
+        
+        # count remaining trials
+        trial_counts.append(data[label].groupby('subject').count())
         
         for sub in subjects:
             datasub = data.loc[sub]
@@ -229,6 +245,8 @@ for label in labels:
 
 print('')
 
+trial_counts = pd.concat(trial_counts, axis=1, keys=times).stack()
+
 
 #%% plot results
 show_measure = 'mean'
@@ -237,14 +255,7 @@ alpha = 0.01
 sl = second_level.dropna().copy()
 ss.add_measure(sl, 'mlog10p_fdr')
 
-r_name = 'dot_x_time'
-r_colors = {'intercept': 'C0', 'dot_x_time': 'C1', 'dot_y_time': 'C2', 
-            'percupt_x_time': 'C3', 'percupt_y_time': 'C4'}
-r_labels = {'percupt_y_time': '|PU|-y', 
-            'percupt_x_time': '|PU|-x',
-            'dot_x_time': 'x-coord',
-            'dot_y_time': 'y-coord',
-            'intercept': 'intercept'}
+r_name = 'sum_dot_x_time'
 
 # which regressors to show? 
 # add main regressor of interest to end to show it on top
@@ -275,7 +286,7 @@ for label, ax in zip(labels, axes):
             color=lines[r_name].get_color())
     ax.plot(ti[[0, -1]], [0, 0], '--k', zorder=1)
     
-    ax.set_title(label[0])
+    ax.set_title(label[0] + '-' + area)
     if resp_align:
         ax.set_xlabel('time from response (ms)')
     else:
@@ -330,7 +341,7 @@ fl = (first_level.xs('beta', level='measure', axis=1)
       .stack('subject').reset_index('time'))
 fl = fl[(fl.time >= xrange[0]) & (fl.time <= xrange[1])]
 
-r_name = 'dot_x_time'
+r_name = 'sum_dot_x_time'
 # which regressors to show? 
 # add main regressor of interest to end to show it on top
 show_names = ['percupt_x_time', 'dot_y_time']
@@ -350,7 +361,7 @@ for label, ax in zip(labels, axes):
     
     ax.plot(xrange, [0, 0], '--k', zorder=1)
     ax.set_ylabel('')
-    ax.set_title(label[0])
+    ax.set_title(label[0] + '-' + area)
     if resp_align:
         ax.set_xlabel('time from response (ms)')
     else:
