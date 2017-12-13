@@ -17,6 +17,7 @@ import os
 from scipy.stats import ttest_1samp
 import statsmodels.api as sm
 import pystan
+import gc
 
 
 #%% options
@@ -26,9 +27,13 @@ srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
 
 srcfile = os.path.join(ss.bem_dir, srcfile)
 
-area = '4'
+area = 'v23ab'
 
-normsrc = True
+# set to 'local' to normalise within time points and subjects
+# set to 'global' to normalise across the complete design matrix
+# set to anything else to not normalise
+# applies to both data and design matrix
+normalise = 'local'
 
 labels = ['L_%s_ROI-lh' % area, 'R_%s_ROI-rh' % area]
 
@@ -48,15 +53,18 @@ if resp_align:
 else:
     timeslice = [delay, 1500]
     fbase = 'firstdot-aligned'
+
+fbase = '%s_%s_norm%s_delay%3d_toolate%+05d' % (
+            fbase, area, normalise, delay, toolate)
     
 times = pd.Index(np.arange(timeslice[0], timeslice[1]+10, step=10), 
                  name='time')
 
-r_colors = {'intercept': 'C0', 'sum_dot_x_time': 'C1', 'dot_y_time': 'C2', 
+r_colors = {'intercept': 'C0', 'dot_x_time': 'C1', 'dot_y_time': 'C2', 
             'percupt_x_time': 'C3', 'percupt_y_time': 'C4'}
 r_labels = {'percupt_y_time': 'PU-y', 
             'percupt_x_time': 'PU-x',
-            'sum_dot_x_time': 'sum-x',
+            'dot_x_time': 'x-coord',
             'dot_y_time': 'y-coord',
             'intercept': 'intercept'}
 r_names = list(r_labels.keys())
@@ -115,6 +123,8 @@ def load_subject(sub):
                              slice(None))]
     else:
         epochs = epochs.loc[sub]
+        
+    gc.collect()
     
     return epochs
 
@@ -123,7 +133,7 @@ alldata = pd.concat([load_subject(sub) for sub in subjects],
                     keys=subjects, names=['subject', 'trial', 'time'])
 print('done.')
 
-if normsrc:
+if normalise == 'global':
     epochs_mean = pd.read_hdf(srcfile, 'epochs_mean')
     epochs_std = pd.read_hdf(srcfile, 'epochs_std')
     
@@ -132,10 +142,12 @@ if normsrc:
     
 #%% create response-aligned design matrix
 DM = subject_DM.get_trial_time_DM(r_names, epochtimes.values / 1000, 
-                                  delay=delay / 1000, normalise=True, 
-                                  subjects=subjects)
+                                  delay=delay / 1000, subjects=subjects)
 
 DM.sort_index(axis=1, inplace=True)
+
+if normalise == 'global':
+    DM = subject_DM.normalise_DM(DM, True)
 
 if resp_align:
     # exclude trials in which there was no response (timed out trials)
@@ -153,31 +165,6 @@ if resp_align:
 # response-aligned regressor values, if not response-aligned this transforms
 # the time index from seconds to milliseconds
 DM.index = alldata.index
-
-
-#%% check relationship at particular time point before response
-r_name = 'sum_dot_x_time'
-time = 30
-
-data = pd.concat([DM.xs(time, level='time')[r_name], 
-                  alldata.xs(time, level='time')], axis=1)
-data = data.dropna()
-
-# flip x-values according to the eventual choice; this allows you to check 
-# whether a linear relationship only results because there are only two levels
-# of activity (one for left and one for right choice), but these are mixed with
-# a probability (of choosing left or right) given by the x-value; if this is 
-# the case you should see the two levels of activity after flipping instead of
-# a linear relationship
-data[r_name] *= np.sign(data[r_name]) * np.sign(choices.loc[data.index])
-
-color = 'k'
-xrange = data[r_name].quantile([0.1, 0.9])
-fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(7.5, 4.5))
-for i in range(2):
-    gpm = ss.gpregplot(r_name, labels[i], data, x_estimator=np.mean, x_bins=8,
-                       line_kws={'color': color, 'label': '%d ms' % time},
-                       scatter_kws={'color': color}, xrange=xrange, ax=axes[i])
     
 
 #%% standard summary statistics inference
@@ -204,8 +191,7 @@ for label in labels:
         print('\rlabel %s, time = % 5d' % (label, time), end='', flush=True)
         
         data = pd.concat([DM.xs(time, level='time'), 
-                          alldata.xs(time, level='time')],
-                 axis=1)
+                          alldata.xs(time, level='time')], axis=1)
         
         # remove trials which are > -100 to response
         if not resp_align:
@@ -217,8 +203,18 @@ for label in labels:
         trial_counts.append(data[label].groupby('subject').count())
         
         for sub in subjects:
-            datasub = data.loc[sub]
+            datasub = data.loc[sub].copy()
+            
             if datasub.shape[0] > 30:
+                if normalise == 'local':
+                    # subtracts the mean when its magnitude is more than 
+                    # twice the std (see msratio)
+                    datasub[DM.columns] = subject_DM.normalise_DM(
+                            datasub[DM.columns], True)
+                    
+                    # only normalise std (mean to be capture by intercept)
+                    datasub[label] /= datasub[label].std()
+                
                 res = sm.OLS(
                         datasub[label].values, 
                         datasub[first_level.columns.levels[2]].values, 
@@ -248,6 +244,27 @@ print('')
 trial_counts = pd.concat(trial_counts, axis=1, keys=times).stack()
 
 
+#%% plot number of data points per subject for plotted times
+sl = second_level.dropna()
+tmin = sl.index.get_level_values('time').min()
+tmax = sl.index.get_level_values('time').max()
+
+fig, ax = plt.subplots(1, figsize=(7.5, 4))
+
+cnts = trial_counts.loc[(slice(None), slice(tmin, tmax))].unstack('subject')
+
+lines = ax.plot(cnts.index, cnts.values, color='k', alpha=0.5)
+
+if resp_align:
+    ax.set_xlabel('time from response (ms)')
+else:
+    ax.set_xlabel('time from first dot onset (ms)')
+ax.set_ylabel('trial count')
+ax.legend([lines[0]], ['single subjects'], loc='center right')
+
+fig.savefig(os.path.join(helpers.figdir, 'trcounts_%s.png' % fbase), dpi=300)
+
+
 #%% plot results
 show_measure = 'mean'
 alpha = 0.01
@@ -255,7 +272,7 @@ alpha = 0.01
 sl = second_level.dropna().copy()
 ss.add_measure(sl, 'mlog10p_fdr')
 
-r_name = 'sum_dot_x_time'
+r_name = 'dot_x_time'
 
 # which regressors to show? 
 # add main regressor of interest to end to show it on top
@@ -304,32 +321,7 @@ axes[0].set_ylabel('estimated second-level beta')
 
 fig.tight_layout()
 fig.savefig(os.path.join(helpers.figdir, 
-                         '%s_%s_%s.png' % (fbase, r_name[:-5], area)), 
-            dpi=300)
-
-
-#%% plot number of data points per subject for plotted times
-tmin = sl.index.get_level_values('time').min()
-tmax = sl.index.get_level_values('time').max()
-
-fig, ax = plt.subplots(1, figsize=(7.5, 4))
-
-cnts = trial_counts.loc[(slice(None), slice(tmin, tmax))].unstack('subject')
-
-lines = ax.plot(cnts.index, cnts.values, color=r_colors[r_name], 
-                alpha=0.5)
-
-if resp_align:
-    ax.set_xlabel('time from response (ms)')
-else:
-    ax.set_xlabel('time from first dot onset (ms)')
-ax.set_ylabel('trial count')
-ax.set_title(r_labels[r_name])
-ax.legend([lines[0]], ['single subjects'], loc='center right')
-
-fig.savefig(os.path.join(helpers.figdir, 
-                         '%s_%s_%s_trcounts.png' % (
-                                 fbase, r_name[:-5], area)), dpi=300)
+                         '%s_%s.png' % (r_name[:-5], fbase)), dpi=300)
 
 
 #%% estimate second-level time course with GPs
@@ -341,7 +333,7 @@ fl = (first_level.xs('beta', level='measure', axis=1)
       .stack('subject').reset_index('time'))
 fl = fl[(fl.time >= xrange[0]) & (fl.time <= xrange[1])]
 
-r_name = 'sum_dot_x_time'
+r_name = 'dot_x_time'
 # which regressors to show? 
 # add main regressor of interest to end to show it on top
 show_names = ['percupt_x_time', 'dot_y_time']
@@ -378,23 +370,32 @@ axes[1].legend()
 
 fig.tight_layout()
 fig.savefig(os.path.join(helpers.figdir, 
-                         '%s_%s_%s_gp.png' % (
-                                 fbase, r_name[:-5], area)), dpi=300)
+                         '%s_%s_gp.png' % (r_name[:-5], fbase)), dpi=300)
 
 
-#%% 
-grouped = fl.loc[label].groupby('time')
-Y = grouped[rn].mean()
-X = Y.index.values
-Zvar = grouped[rn].var()
-xpred = np.linspace(*xrange, num=200)[:, None]
+#%% check relationship at particular time point before response
+r_name = 'dot_x_time'
+time = 100
 
-fig, ax = plt.subplots()
+data = pd.concat([DM.xs(time, level='time')[r_name], 
+                  alldata.xs(time, level='time')], axis=1)
+data = data.dropna()
 
-ss.plot_gp_result(ax, xpred, gpm, r_colors[rn], r_labels[rn])
+# flip x-values according to the eventual choice; this allows you to check 
+# whether a linear relationship only results because there are only two levels
+# of activity (one for left and one for right choice), but these are mixed with
+# a probability (of choosing left or right) given by the x-value; if this is 
+# the case you should see the two levels of activity after flipping instead of
+# a linear relationship
+data[r_name] *= np.sign(data[r_name]) * np.sign(choices.loc[data.index])
 
-ax.errorbar(X, Y, np.sqrt(Zvar / grouped[rn].count()), 
-            color=r_colors[rn])
+color = r_colors[r_name]
+xrange = data[r_name].quantile([0.1, 0.9])
+fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(7.5, 4.5))
+for i in range(2):
+    gpm = ss.gpregplot(r_name, labels[i], data, x_estimator=np.mean, x_bins=8,
+                       line_kws={'color': color, 'label': '%d ms' % time},
+                       scatter_kws={'color': color}, xrange=xrange, ax=axes[i])
 
 
 #%% create Stan model
