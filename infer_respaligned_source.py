@@ -17,7 +17,6 @@ import os
 from scipy.stats import ttest_1samp
 import statsmodels.api as sm
 import pystan
-import gc
 
 
 #%% options
@@ -70,74 +69,15 @@ r_labels = {'percupt_y_time': 'PU-y',
 r_names = list(r_labels.keys())
 
 
-#%% example data
+#%% load data time courses
 subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
 S = subjects.size
 
-with pd.HDFStore(srcfile, 'r') as store:
-    epochs = store.select('label_tc', 'subject=2')
-epochtimes = epochs.index.levels[2]
-
-
-#%% define the function which reindexes time to response-aligned
 choices = regressors.subject_trial.response.loc[subjects]
 rts = regressors.subject_trial.RT.loc[subjects] * 1000
 
-# if RTs are an exact multiple of 5, numpy will round both 10+5 and 20+5 to
-# 20; so to not get duplicate times add a small jitter
-fives = (np.mod(rts, 10) != 0) & (np.mod(rts, 5) == 0)
-# subtracting the small amount means that the new times will be rounded
-# down so that e.g., -5 becomes 0, I prefer that round because then there
-# might be slightly more trials with larger times, but the effect is small
-rts[fives] = rts[fives] - 1e-7
-
-def rtindex(sub):
-    """Returns index for data of a subject with time as difference to RT"""
-    
-    rttime = (  epochtimes.values[None, :] 
-              - rts.loc[sub].values[:, None]).flatten()
-    # round to 10 ms and convert into integer
-    rttime = rttime.round(-1).astype(int)
-
-    # create new subject-trial-time index (I cannot only set the labels of
-    # the time level, because the response aligned times have different 
-    # values than those stored in dot-onset aligned times)
-    return pd.MultiIndex.from_arrays(
-            [np.tile(np.arange(1, 481)[:, None], 
-                     (1, epochtimes.size)).flatten(),
-             rttime], names=['trial', 'time']).sort_values()
-
-
-#%% load data of all subjects
-def load_subject(sub):
-    print('\rloading subject %02d ...' % sub, flush=True, end='')
-    with pd.HDFStore(srcfile, 'r') as store:
-        epochs = store.select('label_tc', 'subject=sub')[labels]
-    
-    if resp_align:
-        # get response-aligned times of data points
-        epochs.index = rtindex(sub)
-        
-        # exclude trials which were timed out (were coded as RT=5000 ms)
-        epochs = epochs.loc[(rts.loc[sub][rts.loc[sub] <= 2500].index.values, 
-                             slice(None))]
-    else:
-        epochs = epochs.loc[sub]
-        
-    gc.collect()
-    
-    return epochs
-
-print("loading ... ", end='')
-alldata = pd.concat([load_subject(sub) for sub in subjects],
-                    keys=subjects, names=['subject', 'trial', 'time'])
-print('done.')
-
-if normalise == 'global':
-    epochs_mean = pd.read_hdf(srcfile, 'epochs_mean')
-    epochs_std = pd.read_hdf(srcfile, 'epochs_std')
-    
-    alldata = (alldata - epochs_mean[labels]) / epochs_std[labels]
+alldata, epochtimes = helpers.load_area_tcs(
+        srcfile, subjects, labels, resp_align, rts, normalise)
 
     
 #%% create response-aligned design matrix
@@ -271,6 +211,11 @@ alpha = 0.01
 
 sl = second_level.dropna().copy()
 ss.add_measure(sl, 'mlog10p_fdr')
+
+# to get all significant effects:
+print('all significant effects:')
+print(sl.mlog10p_fdr.stack().groupby('regressor')
+      .apply(lambda s: s[s > -np.log10(alpha)]))
 
 r_name = 'dot_x_time'
 
