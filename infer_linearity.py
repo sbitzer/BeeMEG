@@ -71,6 +71,8 @@ r_labels = {'dot_x_time': 'x-coord',
 r_names = list(r_labels.keys())
 r_name = set(r_labels.keys()).difference({'intercept'}).pop()
 
+ab_beta = 0.8
+
 nsamples = 1000
 nchains = 4
 
@@ -229,22 +231,128 @@ model {
 }
 """
 
-sm = pystan.StanModel(model_code=hierarchical_step_stan)
+linstepmix = """
+data {
+    int<lower=1> N;
+    vector[N] x;
+    vector[N] signx;
+    vector[N] y;
+    
+    real<lower=0> ab_beta;
+}
+
+parameters {
+    real beta_lin;
+    real beta_step;
+    real<lower=0, upper=1> l;
+    real c;
+    real<lower=0> sigma;
+}
+
+model {
+    vector[N] mu_lin = beta_lin * x + c;
+    vector[N] mu_step = beta_step * signx + c;
+
+    beta_lin ~ normal(0, 1);
+    beta_step ~ normal(0, 1);
+    c ~ normal(0, 1);
+    sigma ~ exponential(1);
+    l ~ beta(ab_beta, ab_beta);
+    
+    target += log_mix(l, 
+                      normal_lpdf(y | mu_lin, sigma),
+                      normal_lpdf(y | mu_step, sigma));
+}
+"""
+
+hierarchical_linstepmix = """
+data {
+    int<lower=1> S;
+    int<lower=0> N[S];
+    int<lower=1> Nall;
+    
+    vector[Nall] x;
+    vector[Nall] signx;
+    vector[Nall] y;
+    
+    real<lower=0> ab_beta;
+}
+
+parameters {
+    real beta_lin;
+    real beta_step;
+    real<lower=0, upper=1> l;
+    
+    vector[S] beta_lin_diff_norm;
+    vector[S] beta_step_diff_norm;
+    real<lower=0> std_beta_lin;
+    real<lower=0> std_beta_step;
+    
+    vector[S] intercept;
+    vector<lower=0>[S] stdy;
+}
+
+transformed parameters {
+    vector[S] beta_lin_sub = beta_lin + beta_lin_diff_norm * std_beta_lin;
+    vector[S] beta_step_sub = beta_step + beta_step_diff_norm * std_beta_step;
+}
+
+model {
+    int n = 0;
+    vector[Nall] mu_lin;
+    vector[Nall] mu_step;
+    vector[Nall] std;
+
+    beta_lin ~ normal(0, 1);
+    beta_step ~ normal(0, 1);
+    l ~ beta(ab_beta, ab_beta);
+    
+    intercept ~ normal(0, 1);
+    stdy ~ exponential(1);
+    
+    beta_lin_diff_norm ~ normal(0, 1);
+    beta_step_diff_norm ~ normal(0, 1);
+    std_beta_lin ~ normal(0, 1);
+    std_beta_step ~ normal(0, 1);
+    
+    for (sub in 1:S) {
+        mu_lin[n+1 : n+N[sub]] = beta_lin_sub[sub] * x[n+1 : n+N[sub]]
+                                 + intercept[sub];
+        mu_step[n+1 : n+N[sub]] = beta_step_sub[sub] * signx[n+1 : n+N[sub]]
+                                 + intercept[sub];
+        
+        std[n+1 : n+N[sub]] = rep_vector(stdy[sub], N[sub]);
+        
+        n = n + N[sub];
+    }
+    
+    target += log_mix(l, 
+                      normal_lpdf(y | mu_lin, std),
+                      normal_lpdf(y | mu_step, std));
+}
+"""
+
+sm = pystan.StanModel(model_code=hierarchical_linstepmix)
 
 with pd.HDFStore(fstore, mode='a', complevel=7, complib='blosc') as store:
     store['model'] = pd.Series(hierarchical_step_stan)
     
     
 #%% define function that returns data in the format that pystan wants
-def get_stan_data(x, y, choice_flip, choices):
+def get_stan_data(x, y, normalise, choice_flip, choices):
     if choice_flip:
         x *= np.sign(x) * np.sign(choices.loc[x.index])
+        
+    if normalise == 'local':
+        x = x.groupby('subject').apply(lambda s: (s - s.mean()) / s.std())
+        y = y.groupby('subject').apply(lambda s: (s - s.mean()) / s.std())
     
-    return {'x': x.values,
+    return {'x': x.values, 'signx': np.sign(x.values),
             'y': y.values,
             'S': y.index.get_level_values('subject').unique().size,
             'N': y.groupby('subject').count().values,
-            'Nall': y.size}
+            'Nall': y.size,
+            'ab_beta': ab_beta}
     
 
 #%% initialise output DataFrames
@@ -280,13 +388,9 @@ for label in labels:
         # only use subjects with more than 30 trials
         data = data.loc[subjects[trial_counts[-1] > 30]]
         
-        if normalise == 'local':
-            data = data.groupby('subject').apply(
-                    lambda s: (s - s.mean()) / s.std())
-        
         for choice_flip in [False, True]:
-            standata = get_stan_data(data[r_name], data[label], choice_flip, 
-                                     choices)
+            standata = get_stan_data(data[r_name], data[label], normalise, 
+                                     choice_flip, choices)
             
             fit = sm.sampling(standata, iter=nsamples, chains=nchains)
             
@@ -331,18 +435,20 @@ trial_counts = pd.concat(trial_counts, axis=1, keys=times).stack()
 
 
 #%% make some random test data
-#N = 2000
-#beta = 0.1
-#c = 0.06
-#sigma = 0.5
-#
-#x = np.random.randn(N)
-#
-#mu = beta / 3 * x
-#    
-#y = np.random.randn(N) *sigma + mu
-#
-##sns.regplot(x, y, x_estimator=np.mean, x_bins=8)
+N = 2000
+beta = 0.1
+c = 0.06
+sigma = 0.5
+
+x = np.random.randn(N)
+
+mu = beta * x
+    
+y = np.random.randn(N) * sigma + mu
+
+data = {'N': N, 'x': x, 'signx': np.sign(x), 'y': y, 'ab_beta': 0.8}
+
+#sns.regplot(x, y, x_estimator=np.mean, x_bins=8)
 #
 #
 ##%% run stan on test data
@@ -366,35 +472,36 @@ trial_counts = pd.concat(trial_counts, axis=1, keys=times).stack()
 #
 #
 ##%% make hierarchical random test data
-#S = 34
-#Nsub = np.array(np.random.randn(S) * 100, int)
-#Nsub *= -np.sign(Nsub)
-#Nsub += 480
-#
-#beta = 0.1
-#c = 0.06
-#
-#beta_sub = beta + np.random.randn(S) * 0.03
-#intercept = c + np.random.randn(S) * 0.1
-#sigmas = np.random.randn(S) * 0.1 + 1
-#
-#x = []
-#y = []
-#for sub in range(S):
-#    x.append(np.random.randn(Nsub[sub]))
-#    
-#    mu = beta_sub[sub] * np.sign(x[-1])
-#    
-#    y.append(np.random.randn(Nsub[sub]) * sigmas[sub] + mu)
-#
-#ylin = []
-#for sub in range(S):
-#    mu = beta_sub[sub] / 3 * x[sub]
-#    
-#    ylin.append(np.random.randn(Nsub[sub]) * sigmas[sub] + mu)
-#
-#data = {'S': S, 'N': Nsub, 'Nall': Nsub.sum(),
-#        'x': np.concatenate(x), 'y': np.concatenate(y)}
+S = 25
+Nsub = np.array(np.random.randn(S) * 100, int)
+Nsub *= -np.sign(Nsub)
+Nsub += 300
+
+beta = 0
+c = 0.06
+
+beta_sub = beta + np.random.randn(S) * 0
+intercept = c + np.random.randn(S) * 0.1
+sigmas = np.random.randn(S) * 0.1 + 1
+
+x = []
+y = []
+for sub in range(S):
+    x.append(np.random.randn(Nsub[sub]))
+    
+    mu = beta_sub[sub] * np.sign(x[-1])
+    
+    y.append(np.random.randn(Nsub[sub]) * sigmas[sub] + mu)
+
+ylin = []
+for sub in range(S):
+    mu = beta_sub[sub] / 3 * x[sub]
+    
+    ylin.append(np.random.randn(Nsub[sub]) * sigmas[sub] + mu)
+
+data = {'S': S, 'N': Nsub, 'Nall': Nsub.sum(),
+        'x': np.concatenate(x), 'signx': np.sign(np.concatenate(x)),
+        'y': np.concatenate(y), 'ab_beta': 0.8}
 #
 #
 #sns.regplot(data['x'], data['y'], x_estimator=np.mean, x_bins=8)
