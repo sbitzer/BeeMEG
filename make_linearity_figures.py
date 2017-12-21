@@ -11,20 +11,20 @@ import helpers
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+import seaborn as sns
+
+linstepfun = lambda x, beta, l: beta * 2 * (1 / (1 + np.exp(-(x / l))) - 0.5)
 
 
 #%% load results (samples)
 # resp-align, delay=400, times=[-700, 400], area 4
 fname = 'source_linearity_201712181904.h5'
 with pd.HDFStore(os.path.join(helpers.resultsdir, fname), 'r') as store:
-#    samples = store['samples']
+    samples = store['samples']
     r_name = store['r_name'][0]
     options = store['scalar_params']
 
 resp_align = options.resp_align
-    
-samples = pd.read_hdf(os.path.join(helpers.resultsdir, fname + '.tmp'),
-                      'samples')
 
 labels = samples.index.levels[0]
 area = labels[0][2:-7]
@@ -37,7 +37,8 @@ fig, axes = plt.subplots(2, 2, sharex=True, sharey='row', figsize=(7.5, 8))
 fliplabels = {True: 'flipped', False: 'original'}
 flipcols = {True: 'C0', False: 'C1'}
 
-varlabels = {'beta': 'population-level effect', 'l': 'linearity'}
+varlabels = {'beta': r'population-level effect ($\beta$)', 
+             'l': 'linearity (l)'}
 
 for var, row in zip(samples.columns.levels[1], axes):
     for label, ax in zip(labels, row):
@@ -81,9 +82,16 @@ if resp_align and times[-1] >= 0:
             ax.plot([0, 0], yl, ':k', label='response', zorder=1)
         row[0].set_ylim(yl);
 
-axes[0, 0].legend(loc='upper left')
+axes[0, 0].set_ylim(-0.4, 0.4)
+
+axes[0, 0].legend(loc='lower left')
 
 fig.tight_layout()
+
+figname = 'linearity_%s_%s_%s_delay%d.svg' % (
+        r_name, 'response-aligned' if resp_align else 'firstdot-aligned',
+        area, options.delay)
+fig.savefig(os.path.join(helpers.figdir, figname), dpi=300)
 
 
 #%% plot estimated functional relationship
@@ -92,13 +100,11 @@ flip = True
 
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(7.5, 4))
 
-fun = lambda x, beta, l: beta * 2 * (1 / (1 + np.exp(-(x / l))) - 0.5)
-
 xx = np.linspace(-3, 3, 500)
 for label, ax in zip(labels, axes):
     medians = samples.loc[(label, time, slice(None)), flip].median()
     
-    ax.plot(xx, fun(xx, medians['beta'], medians['l']))
+    ax.plot(xx, linstepfun(xx, medians['beta'], medians['l']))
     
     ax.set_title('%s-%s (%d ms)' % (label[0], area, time))
     ax.set_xlabel('normalised %s value' % r_name)
@@ -106,3 +112,38 @@ for label, ax in zip(labels, axes):
 axes[0].set_ylabel('population level signal (fraction of std)')
 
 fig.tight_layout()
+
+
+#%% demonstrate linear-step-regression-function
+beta = 0.04
+intercept = 0
+ls = np.r_[0.01, 0.3, 1.3]
+
+xx = np.linspace(-3, 3, 500)
+
+fig, ax = plt.subplots(figsize=(4.5, 3.5))
+colors = sns.cubehelix_palette(ls.size, 0.8, light=0.7)
+
+# plot the curves
+for l, col in zip(ls, colors):
+    ax.plot(xx, linstepfun(xx, beta, l) + intercept, label='l = %4.2f' % l,
+            color=col)
+
+# add annotations
+yl = ax.get_ylim()
+xl = ax.get_xlim()
+ax.plot(xl, [-beta, -beta], '--k', lw=1, zorder=1)
+ax.plot(xl, [beta, beta], '--k', lw=1, zorder=1)
+ax.set_xlim(xl)
+
+ax.text(1.1 * xl[1], beta, r'$\beta$', 
+        verticalalignment='center', horizontalalignment='right')
+ax.text(1.1 * xl[1], -beta, r'-$\beta$', 
+        verticalalignment='center', horizontalalignment='right')
+
+ax.set_ylabel('signal')
+ax.set_xlabel('regressor value')
+ax.legend()
+
+fig.subplots_adjust(0.18, 0.15, 0.93, 0.95)
+fig.savefig(os.path.join(helpers.figdir, 'linstepfun.svg'), dpi=300)
