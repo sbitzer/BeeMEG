@@ -6,23 +6,24 @@ Created on Tue Dec 19 12:45:31 2017
 @author: bitzer
 """
 
-import numpy as np
 import helpers
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-linstepfun = lambda x, beta, l: beta * 2 * (1 / (1 + np.exp(-(x / l))) - 0.5)
+import scipy.stats
 
 
 #%% load results (samples)
 # resp-align, delay=400, times=[-700, 400], area 4
-fname = 'source_linearity_201712181904.h5'
+fname = 'source_linearity_201801041820.h5'
+
 with pd.HDFStore(os.path.join(helpers.resultsdir, fname), 'r') as store:
-    samples = store['samples']
     r_name = store['r_name'][0]
     options = store['scalar_params']
+    samples = store['samples']
+    loodiffs = store['loodiffs']
+    sample_diagnostics = store['sample_diagnostics']
 
 resp_align = options.resp_align
 
@@ -38,27 +39,49 @@ fliplabels = {True: 'flipped', False: 'original'}
 flipcols = {True: 'C0', False: 'C1'}
 
 varlabels = {'beta': r'population-level effect ($\beta$)', 
-             'l': 'linearity (l)'}
+             'loo': 'evidence for linear'}
 
-for var, row in zip(samples.columns.levels[1], axes):
+for var in varlabels.keys():
+    if var == 'beta':
+        row = axes[0]
+    else:
+        row = axes[1]
+    
     for label, ax in zip(labels, row):
-        subset = samples.loc[(label, slice(None)), (slice(None), var)]
-        
-        # get sample quantiles
-        quantiles = subset.groupby('time').quantile([0.025, 0.5, 0.975])
-        
-        # plot 95% PPI bands
-        for flip in [True, False]:
-            ax.fill_between(
-                    times, 
-                    quantiles.loc[(slice(None), 0.025), flip].values.flatten(),
-                    quantiles.loc[(slice(None), 0.975), flip].values.flatten(), 
-                    facecolor=flipcols[flip], alpha=0.2)
+        if var == 'beta':
+            subset = samples.loc[(label, slice(None)), (slice(None), 'beta_lin')]
             
-        # plot medians
-        for flip in [True, False]:
-            ax.plot(times, quantiles.loc[(slice(None), 0.5), flip], lw=2,
-                    color=flipcols[flip], label=fliplabels[flip])
+            # get sample quantiles
+            quantiles = subset.groupby('time').quantile([0.025, 0.5, 0.975])
+            
+            # plot 95% PPI bands
+            for flip in [True, False]:
+                ax.fill_between(
+                        times, 
+                        quantiles.loc[(slice(None), 0.025), flip].values.flatten(),
+                        quantiles.loc[(slice(None), 0.975), flip].values.flatten(), 
+                        facecolor=flipcols[flip], alpha=0.2)
+                
+            # plot medians
+            for flip in [True, False]:
+                ax.plot(times, quantiles.loc[(slice(None), 0.5), flip], lw=2,
+                        color=flipcols[flip], label=fliplabels[flip])
+        
+        elif var == 'loo':
+            # plot 2*SE bands
+            for flip in [True, False]:
+                subset = loodiffs.loc[(label, slice(None)), flip]
+                ax.fill_between(
+                        times, 
+                        subset['diff'] - 2*subset['se'],
+                        subset['diff'] + 2*subset['se'], 
+                        facecolor=flipcols[flip], alpha=0.2)
+                
+            # plot loodiff
+            for flip in [True, False]:
+                subset = loodiffs.loc[(label, slice(None)), flip]
+                ax.plot(times, subset['diff'], lw=2,
+                        color=flipcols[flip], label=fliplabels[flip])
             
         # plot 0 as reference
         ax.plot(times[[0, -1]], [0, 0], '--k', lw=1, zorder=1)
@@ -82,7 +105,7 @@ if resp_align and times[-1] >= 0:
             ax.plot([0, 0], yl, ':k', label='response', zorder=1)
         row[0].set_ylim(yl);
 
-axes[0, 0].set_ylim(-0.4, 0.4)
+#axes[0, 0].set_ylim(-0.4, 0.4)
 
 axes[0, 0].legend(loc='lower left')
 
@@ -94,56 +117,58 @@ figname = 'linearity_%s_%s_%s_delay%d.svg' % (
 fig.savefig(os.path.join(helpers.figdir, figname), dpi=300)
 
 
-#%% plot estimated functional relationship
-time = -100
-flip = True
+#%% check whether beta_lin or beta_step are larger across several time points
+tsplit = -200
+tfirst = -2000
+tlast = 110
 
-fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(7.5, 4))
+fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(5, 4))
 
-xx = np.linspace(-3, 3, 500)
+flipcols = {'original': 'C1', 'flipped': 'C0'}
+
+ylabel = 'original - flipped (posterior mean beta)'
+
 for label, ax in zip(labels, axes):
-    medians = samples.loc[(label, time, slice(None)), flip].median()
+    subset = samples.loc[(label, slice(tfirst, tsplit), slice(None)),
+                         (slice(None), 'beta_lin')]
+    means = subset.groupby('time').mean()
+    subset = samples.loc[(label, slice(tsplit+1, tlast), slice(None)),
+                         (slice(None), 'beta_lin')]
+    means = pd.concat([means, subset.groupby('time').mean()],
+                      keys=['early', 'late'], names=['period', 'time'])
+    means.columns = means.columns.levels[0].map(lambda x: fliplabels[x])
     
-    ax.plot(xx, linstepfun(xx, medians['beta'], medians['l']))
+    diff = means.original - means.flipped
+    diff.name = ylabel
     
-    ax.set_title('%s-%s (%d ms)' % (label[0], area, time))
-    ax.set_xlabel('normalised %s value' % r_name)
+    print(label)
+    for period in ['early', 'late']:
+        tval, pval = scipy.stats.ttest_1samp(diff[period], 0)
+        print('%5s period: t = %+4.2f, p = %6.4f' % (period, tval, pval))
+    
+    diff = diff.reset_index(level='period')
+    
+    sns.boxplot(x='period', y=ylabel, data=diff, ax=ax, color='0.5', width=0.6,
+                notch=True)
+    
+    ax.set_title(label[0] + '-' + area)
+    
+yl = axes[0].get_ylim()
+axes[0].fill_between(ax.get_xlim(), [yl[1], yl[1]], 
+                color=flipcols['original'], zorder=0, alpha=0.2)
+axes[0].fill_between(ax.get_xlim(), [yl[0], yl[0]], 
+                color=flipcols['flipped'], zorder=0, alpha=0.2)
+axes[1].fill_between(ax.get_xlim(), [yl[1], yl[1]], 
+                color=flipcols['flipped'], zorder=0, alpha=0.2)
+axes[1].fill_between(ax.get_xlim(), [yl[0], yl[0]], 
+                color=flipcols['original'], zorder=0, alpha=0.2)
+axes[0].set_ylim(yl)
 
-axes[0].set_ylabel('population level signal (fraction of std)')
-
+axes[1].set_ylabel('')
 fig.tight_layout()
 
-
-#%% demonstrate linear-step-regression-function
-beta = 0.04
-intercept = 0
-ls = np.r_[0.01, 0.3, 1.3]
-
-xx = np.linspace(-3, 3, 500)
-
-fig, ax = plt.subplots(figsize=(4.5, 3.5))
-colors = sns.cubehelix_palette(ls.size, 0.8, light=0.7)
-
-# plot the curves
-for l, col in zip(ls, colors):
-    ax.plot(xx, linstepfun(xx, beta, l) + intercept, label='l = %4.2f' % l,
-            color=col)
-
-# add annotations
-yl = ax.get_ylim()
-xl = ax.get_xlim()
-ax.plot(xl, [-beta, -beta], '--k', lw=1, zorder=1)
-ax.plot(xl, [beta, beta], '--k', lw=1, zorder=1)
-ax.set_xlim(xl)
-
-ax.text(1.1 * xl[1], beta, r'$\beta$', 
-        verticalalignment='center', horizontalalignment='right')
-ax.text(1.1 * xl[1], -beta, r'-$\beta$', 
-        verticalalignment='center', horizontalalignment='right')
-
-ax.set_ylabel('signal')
-ax.set_xlabel('regressor value')
-ax.legend()
-
-fig.subplots_adjust(0.18, 0.15, 0.93, 0.95)
-fig.savefig(os.path.join(helpers.figdir, 'linstepfun.svg'), dpi=300)
+# svg didn't work with transparency in LibreOffice
+figname = 'linearity_orig-flipped_%s_%s_%s_delay%d.png' % (
+        r_name, 'response-aligned' if resp_align else 'firstdot-aligned',
+        area, options.delay)
+fig.savefig(os.path.join(helpers.figdir, figname), dpi=300)

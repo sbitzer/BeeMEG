@@ -16,11 +16,6 @@ import os
 import pystan
 import psis
 import warnings
-import logging
-
-# for switching off a pystan warning about sampling extraction
-logger = logging.getLogger()
-loglev = logger.getEffectiveLevel()
 
 
 #%% options
@@ -72,15 +67,16 @@ r_labels = {'dot_x_time': 'x-coord',
 r_names = list(r_labels.keys())
 r_name = set(r_labels.keys()).difference({'intercept'}).pop()
 
-ab_beta = 0.8
+use_loodiff_mean = True
 
 nsamples = 1000
 nchains = 4
 
 with pd.HDFStore(fstore, mode='w', complevel=7, complib='blosc') as store:
     store['scalar_params'] = pd.Series(
-            [delay, resp_align, toolate, nsamples, nchains], 
-            ['delay', 'resp_align', 'toolate', 'nsamples', 'nchains'])
+            [delay, resp_align, toolate, nsamples, nchains, use_loodiff_mean], 
+            ['delay', 'resp_align', 'toolate', 'nsamples', 'nchains',
+             'use_loodiff_mean'])
     store['r_name'] = pd.Series(r_name)
     store['srcfile'] = pd.Series(srcfile)
     store['normalise'] = pd.Series(normalise)
@@ -396,10 +392,12 @@ generated quantities {
 }
 """
 
-sm = pystan.StanModel(model_code=hierarchical_linear)
+model_code = hierarchical_linear
+
+sm = pystan.StanModel(model_code=model_code)
 
 with pd.HDFStore(fstore, mode='a', complevel=7, complib='blosc') as store:
-    store['model'] = pd.Series(hierarchical_step_stan)
+    store['model'] = pd.Series(model_code)
     
     
 #%% define function that returns data in the format that pystan wants
@@ -407,16 +405,20 @@ def get_stan_data(x, y, normalise, choice_flip, choices):
     if choice_flip:
         x *= np.sign(x) * np.sign(choices.loc[x.index])
         
-    if normalise == 'local':
-        x = x.groupby('subject').apply(lambda s: (s - s.mean()) / s.std())
-        y = y.groupby('subject').apply(lambda s: (s - s.mean()) / s.std())
+    x_step = np.sign(x)
     
-    return {'x': x.values, 'signx': np.sign(x.values),
+    if normalise == 'local':
+        normfun = lambda s: (s - s.mean()) / s.std()
+        
+        x = x.groupby('subject').apply(normfun)
+        x_step = x_step.groupby('subject').apply(normfun)
+        y = y.groupby('subject').apply(normfun)
+    
+    return {'x_lin': x.values, 'x_step': x_step.values,
             'y': y.values,
             'S': y.index.get_level_values('subject').unique().size,
             'N': y.groupby('subject').count().values,
-            'Nall': y.size,
-            'ab_beta': ab_beta}
+            'Nall': y.size}
     
 
 #%% initialise output DataFrames
@@ -425,12 +427,51 @@ samples = pd.DataFrame([],
                 [labels, times, np.arange((nsamples - nsamples // 2) * nchains)], 
                 names=['label', 'time', 'sample']), 
         columns=pd.MultiIndex.from_product(
-                [[True, False], ['beta', 'l']], 
+                [[True, False], ['beta_lin', 'beta_step']], 
                 names=['choice_flip', 'variable']), dtype=np.float64)
 samples.sort_index(axis=1, inplace=True)
 
+loodiffs = pd.DataFrame([], 
+        index=pd.MultiIndex.from_product(
+                [labels, times], 
+                names=['label', 'time']), 
+        columns=pd.MultiIndex.from_product(
+                [[True, False], ['diff', 'se']], 
+                names=['choice_flip', 'measure']), dtype=np.float64)
+loodiffs.sort_index(axis=1, inplace=True)
+
+sample_diagnostics = pd.DataFrame([], 
+        index=pd.MultiIndex.from_product(
+                [labels, times], 
+                names=['label', 'time']), 
+        columns=pd.MultiIndex.from_product(
+                [[True, False], ['beta_lin', 'beta_step'], ['neff', 'Rhat']], 
+                names=['choice_flip', 'variable', 'measure']), 
+        dtype=np.float64)
+sample_diagnostics.sort_index(axis=1, inplace=True)
+
 
 #%% run inference
+def compute_loodiff(log_liks, use_mean=False):
+    loos = []
+    measure = []
+    
+    for model in log_liks:
+        loosum_model, loos_model, ks = psis.psisloo(model)
+        loos.append(loos_model)
+        if use_mean:
+            measure.append(loosum_model / loos_model.size)
+        else:
+            measure.append(loosum_model)
+            
+    if use_mean:
+        return (measure[0] - measure[1], 
+                (loos[0] - loos[1]).std() / np.sqrt(loos[0].size))
+    else:
+        return (measure[0] - measure[1], 
+                np.sqrt( (loos[0] - loos[1]).var() * loos[0].size ))
+
+
 for label in labels:
     trial_counts = []
     
@@ -456,233 +497,67 @@ for label in labels:
             standata = get_stan_data(data[r_name], data[label], normalise, 
                                      choice_flip, choices)
             
+            # inference for linear model
+            standata['x'] = standata['x_lin']
             fit = sm.sampling(standata, iter=nsamples, chains=nchains)
+            samples_lin = fit.extract(['beta', 'log_lik'])
+            samples.loc[(label, time, slice(None)), 
+                        (choice_flip, 'beta_lin')] = samples_lin['beta']
             
-            # wrapped into logging and warning calls to suppress a stupid 
-            # pystan warning about ignoring dtypes when permuted=False and
-            # a Python warning saying that they should use logger.warning 
-            # instead of logger.warn
-            logger.setLevel(logging.ERROR)
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
+            summ = pystan.misc._summary_sim(fit.sim, ['beta'], [0.5])
+            sample_diagnostics.loc[
+                    (label, time), 
+                    (choice_flip, 'beta_lin', 'neff')] = summ['ess']
+            sample_diagnostics.loc[
+                    (label, time), 
+                    (choice_flip, 'beta_lin', 'Rhat')] = summ['rhat']
             
-                allsamples = fit.extract(permuted=False)
+            # inference for step model
+            standata['x'] = standata['x_step']
+            fit = sm.sampling(standata, iter=nsamples, chains=nchains)
+            samples_step = fit.extract(['beta', 'log_lik'])
+            samples.loc[(label, time, slice(None)), 
+                        (choice_flip, 'beta_step')] = samples_step['beta']
             
-            logger.setLevel(loglev)
+            summ = pystan.misc._summary_sim(fit.sim, ['beta'], [0.5])
+            sample_diagnostics.loc[
+                    (label, time), 
+                    (choice_flip, 'beta_step', 'neff')] = summ['ess']
+            sample_diagnostics.loc[
+                    (label, time), 
+                    (choice_flip, 'beta_step', 'Rhat')] = summ['rhat']
             
-            for var in samples.columns.levels[1]:
-                ind = fit.flatnames.index(var)
-                
-                samples.loc[(label, time, slice(None)), (choice_flip, var)] = (
-                        allsamples[:, :, ind].flatten())
-                
+            # model comparison
+            diff, se = compute_loodiff([samples_lin['log_lik'], 
+                                        samples_step['log_lik']],
+                                       use_mean=use_loodiff_mean)
+            
+            loodiffs.loc[(label, time), (choice_flip, 'diff')] = diff
+            loodiffs.loc[(label, time), (choice_flip, 'se')] = se
+                         
             try:
                 # store in HDF-file, note that columns cannot be multi-index,
                 # when you want to append to a table, hence use tmp-file
                 with pd.HDFStore(fstore + '.tmp', mode='w', complib='blosc', 
                                  complevel=7) as store:
                     store['samples'] = samples
+                    store['loodiffs'] = loodiffs
+                    store['sample_diagnostics'] = sample_diagnostics
             except:
                 warnings.warn("Couldn't store intermediate result, skipping.")
 
 print('')
 
+trial_counts = pd.concat(trial_counts, axis=1, keys=times).stack()
+
 try:
     with pd.HDFStore(fstore, mode='r+', complevel=7, complib='blosc') as store:
+        store['trial_counts'] = trial_counts
         store['samples'] = samples
+        store['loodiffs'] = loodiffs
+        store['sample_diagnostics'] = sample_diagnostics
 except:
     warnings.warn('Results not saved yet!')
 else:
     os.remove(fstore + '.tmp')
 
-trial_counts = pd.concat(trial_counts, axis=1, keys=times).stack()
-
-
-#%% make some random test data
-N = 2000
-beta = 0.1
-c = 0.06
-sigma = 0.5
-
-x = np.random.randn(N)
-
-mu = beta * x
-    
-y = np.random.randn(N) * sigma + mu
-
-data = {'N': N, 'x': x, 'signx': np.sign(x), 'y': y, 'ab_beta': 0.8}
-
-#sns.regplot(x, y, x_estimator=np.mean, x_bins=8)
-#
-#
-##%% run stan on test data
-#fit = pystan.stan(model_code=step_stan, 
-#                  data={'N': N, 'x': x, 'y': y},
-#                  iter=1000, chains=4, verbose=True)
-#
-##fit.plot(['sigma', 'l', 'c', 'beta'])
-#
-##samples = fit.extract(['sigma', 'l', 'c', 'beta'])
-#
-#
-##%% 
-#mu = beta * np.sign(x)
-#    
-#y = np.random.randn(N) *sigma + mu
-#
-#fit2 = pystan.stan(fit=fit, data={'N': N, 'x': x, 'y': y},
-#                   iter=1000, chains=4)
-##fit2.plot(['sigma', 'l', 'c', 'beta'])
-#
-#
-#%% make hierarchical random test data
-S = 25
-Nsub = np.array(np.random.randn(S) * 100, int)
-Nsub *= -np.sign(Nsub)
-Nsub += 300
-
-# beta to 1 for strong effect, to 0.1 for weak effect, to 0 for no effect
-beta = 0.1
-
-beta_diff = np.random.randn(S) * 0.02
-intercept = np.random.randn(S) * 0.1
-sigmas = np.random.randn(S) * 0.1 + 1
-
-
-#%%
-def get_stan_data(beta, data=None):
-    beta_sub = beta + beta_diff
-    
-    if data is None:
-        data = {'S': S, 'N': Nsub, 'Nall': Nsub.sum()}
-        
-        x = []
-        for sub in range(S):
-            x.append(np.random.randn(Nsub[sub]))
-            
-        data['x_lin'] = np.concatenate(x)
-        data['x_step'] = np.sign(data['x_lin'])
-        data['x'] = data['x_lin']
-            
-    beta_all = []
-    noise = []
-    for sub in range(S):
-        beta_all.append(np.full(Nsub[sub], beta_sub[sub]))
-    
-        noise.append(np.random.randn(Nsub[sub]) * sigmas[sub])
-        
-    beta_all = np.concatenate(beta_all)
-    
-    data['y_lin'] = np.concatenate(noise) + beta_all * data['x_lin']
-    data['y_step'] = np.concatenate(noise) + beta_all * data['x_step']
-    data['y'] = data['y_lin']
-    
-    return data
-
-
-#%%
-def compute_loodiff(log_liks):
-    loos = []
-    loosum = []
-    for model in log_liks:
-        loosum_model, loos_model, ks = psis.psisloo(model)
-        loosum.append(loosum_model)
-        loos.append(loos_model)
-    
-    return (loosum[0] - loosum[1], 
-            np.sqrt( (loos[0] - loos[1]).var() * len(loos[0]) ))
-
-
-def compare_lin_step(data, ytype='lin', iter=1000):
-    data['y'] = data['y_' + ytype]
-    
-    data['x'] = data['x_lin']
-    
-    fit = sm.sampling(data, iter=iter)
-    beta_lin_summary = fit.stansummary('beta')
-    samples_lin = fit.extract(['beta', 'log_lik'])
-    
-    data['x'] = data['x_step']
-    
-    fit = sm.sampling(data, iter=iter)
-    samples_step = fit.extract(['beta', 'log_lik'])
-    
-    diff, diffse = compute_loodiff([samples_lin['log_lik'], 
-                                    samples_step['log_lik']])
-        
-    print('loo diff lin - step [-2*se, diff, +2*se]: [%5.2f, %5.2f, %5.2f]' % 
-                     (diff - 2 * diffse, diff, diff + 2 * diffse))
-    
-    print('linear model:')
-    print(beta_lin_summary)
-    print('step model:')
-    print(fit.stansummary('beta'))
-#
-#
-#sns.regplot(data['x'], data['y'], x_estimator=np.mean, x_bins=8)
-#
-#def get_xy(xy, sub):
-#    return data[xy][Nsub[:sub].sum():Nsub[:sub+1].sum()]
-#
-#
-##%% reasonable initialisation to speed things up a little (speed-up effect may
-## be little to non-existent)
-#def get_hierarchical_init():
-#    init = {}
-#    
-#    # intercept is within-subject mean
-#    init['intercept'] = np.array([ysub.mean() for ysub in y])
-#    
-#    # stdy is within-subject std
-#    init['stdy'] = np.array([ysub.std() for ysub in y])
-#    
-#    # randomise intercept using its standard error
-#    init['intercept'] += np.random.randn(S) * init['stdy'] / np.sqrt(S-1)
-#    
-#    # randomise stdy using its across-subject std
-#    init['stdy'] = np.abs(
-#            init['stdy'] + np.random.randn(S) * init['stdy'].std())
-#    
-#    # l somewhere between 0 and 1
-#    init['l'] = np.random.rand()
-#    
-#    # beta estimated from overall correlation (* 3, because the correlation is 
-#    # the linear slope and the range of the normalised x should be roughly
-#    # within [-3, 3])
-#    est_beta = lambda x, y: np.abs(np.corrcoef(x, y)[0, 1]) * 3
-#    init['beta'] = est_beta(data['y'], data['x'])
-#    
-#    # subject-specific beta-estimates
-#    beta_sub = np.array([est_beta(xsub, ysub) for xsub, ysub in zip(x, y)])
-#    
-#    # std_beta as variability in betasub
-#    init['std_beta'] = np.std(beta_sub - init['beta'])
-#    
-#    # beta_diff_norm estimated from difference between overall correlation and 
-#    # subject-specific correlation
-#    init['beta_diff_norm'] = (beta_sub - init['beta']) / init['std_beta']
-#    
-#    # randomise beta within across-subject variability of betas
-#    init['beta'] = np.abs(init['beta'] + np.random.randn() * beta_sub.std())
-#    
-#    # randomise beta_diff_norm within its own variability
-#    init['beta_diff_norm'] = np.abs(
-#            init['beta_diff_norm'] + np.random.randn(S) * init['std_beta'])
-#    
-#    # randomise std_beta within its standard error as approximated from here:
-#    # https://stats.stackexchange.com/questions/156518/what-is-the-standard-error-of-the-sample-standard-deviation
-#    # assuming a normal distribution
-#    init['std_beta'] = np.abs(
-#            init['std_beta'] + np.random.randn() 
-#            * np.sqrt(2 * init['std_beta'] ** 4 / (S-1)))
-#    
-#    return init
-#
-#
-##%% 
-#sm = pystan.StanModel(model_code=hierarchical_step_stan, verbose=True)
-#
-#fit = sm.sampling(data, iter=1000, chains=4, init=get_hierarchical_init)
-#
-#with open('fitres.txt', 'w') as file:
-#    print(fit, file=file)
