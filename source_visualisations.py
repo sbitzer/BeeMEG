@@ -287,7 +287,7 @@ if sys.version_info < (3,):
                             parc='HCPMMP1', fmin=None, fmid=None, fmax=None, 
                             center=None, transparent=True, colormap='auto',
                             initial_time=None, colorbar=True,
-                            threshold=0, region_aggfun=None):
+                            threshold=0, region_aggfun=None, time_label='auto'):
         """Uses efficient brain.add_data to show activation of Glasser areas/labels.
         
             Set threshold > 0 to only show values that are above threshold for some
@@ -333,10 +333,12 @@ if sys.version_info < (3,):
                              'sources in data ({})!'.format(len(labels),
                              src_df.index.levels[0].size))
         
-        if values.index.levels[1].max() - values.index.levels[1].min() > 100:
-            time_label_fun = lambda x: '%4d ms' % x
-        else:
-            time_label_fun = lambda x: '%4d ms' % (x * 1000)
+        if time_label == 'auto':
+            if (  values.index.levels[1].max() 
+                - values.index.levels[1].min()) > 100:
+                time_label = lambda x: '%4d ms' % x
+            else:
+                time_label = lambda x: '%4d ms' % (x * 1000)
     
         for hemi in brain.geo.keys():
             # create data from source estimates
@@ -349,7 +351,7 @@ if sys.version_info < (3,):
             brain.add_data(data, fmin, fmax, mid=fmid, center=center,
                            transparent=transparent, colormap=colormap, 
                            time=src_df.index.levels[1].values, 
-                           time_label=time_label_fun,
+                           time_label=time_label,
                            colorbar=colorbar, hemi=hemi, 
                            remove_existing=True)
             
