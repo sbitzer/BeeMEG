@@ -193,6 +193,29 @@ def extract_hemi_data(src_series, hemi):
     return data
 
 
+def find_mni_coordinates(label, parc='HCPMMP1_5_8'):
+    """Returns MNI-coordinates of center of mass for selected labels."""
+    
+    if type(label) is mne.label.Label:
+        label = label.name
+    
+    labels = mne.read_labels_from_annot(
+            'fsaverage', parc=parc, regexp=label)
+    
+    mnicoords = {}
+    for label in labels:
+        if label.name.startswith('L'):
+            hemi = 0
+        else:
+            hemi = 1
+            
+        vertno = label.center_of_mass()
+        
+        mnicoords[label.name] = mne.vertex_to_mni(vertno, hemi, 'fsaverage')
+        
+    return mnicoords
+
+
 if sys.version_info < (3,):
     def make_movie(stc, hemi='lh', td=10, smoothing_steps=5, colvals=None):
         brain = stc.plot(subject='fsaverage', surface='inflated', hemi=hemi, 
