@@ -197,10 +197,10 @@ def find_mni_coordinates(label, parc='HCPMMP1_5_8'):
     """Returns MNI-coordinates of center of mass for selected labels."""
     
     if type(label) is mne.label.Label:
-        label = label.name
-    
-    labels = mne.read_labels_from_annot(
-            'fsaverage', parc=parc, regexp=label)
+        labels = [label]
+    else:
+        labels = mne.read_labels_from_annot(
+                'fsaverage', parc=parc, regexp=label)
     
     mnicoords = {}
     for label in labels:
