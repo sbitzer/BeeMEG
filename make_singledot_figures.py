@@ -29,7 +29,13 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 # source GLM, dot_x, dot_y, trial regressors
 # subject-specific normalisation of DM without centering and scaling by std
 # label_tc normalised across trials, times and subjects
-fname = 'source_singledot_201711131931.h5'
+#fname = 'source_singledot_201711131931.h5'
+
+# label mode = mean, baseline (-0.3, 0), dots 1-7, times [0, 1300]
+# source GLM, dot_x, dot_y, trial regressors
+# subject-specific normalisation of DM without centering and scaling by std
+# label_tc normalised across trials, times and subjects
+fname = 'source_singledot_201801171913.h5'
 
 resfile = os.path.join(helpers.resultsdir, fname)
 
@@ -50,7 +56,7 @@ R = len(regs)
 
 measure = 'mean'
 #sensor = 'MEG0741'
-sensor = 'L_v23ab_ROI-lh'
+sensor = 'L_4_ROI-lh'
 
 fig, axes = plt.subplots(R, 1, sharex=True, sharey=True, figsize=[6, 8])
 axes[0].set_title('x-coordinate (%s)' % sensor)
@@ -81,5 +87,5 @@ axes[-1].set_xlabel('time (ms)')
 
 fig.subplots_adjust(left=0.1, bottom=0.06, right=0.95, top=0.96, hspace=0.18)
 
-fig.savefig(os.path.join(figdir, 'singledot_%s_%s.png' % (r_name, sensor)), 
-            dpi=300)
+#fig.savefig(os.path.join(figdir, 'singledot_%s_%s.png' % (r_name, sensor)), 
+#            dpi=300)
