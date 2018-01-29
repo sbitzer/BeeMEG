@@ -251,7 +251,13 @@ fig2 = sensor_signal_plot('dot_x', 'MEG2241', 0.17, 'x-coordinate')
 # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
 # subject-specific normalisation of DM without centering and scaling by std
 # label_tc normalised across trials, times and subjects
-basefile = 'source_sequential_201709061827.h5'
+#basefile = 'source_sequential_201709061827.h5'
+
+# label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials, times and subjects
+basefile = 'source_sequential_201801261754.h5'
 
 regressors = ['dot_x', 'dot_y', 'accev']
 
