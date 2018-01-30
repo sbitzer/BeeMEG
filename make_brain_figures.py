@@ -39,13 +39,25 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 # source GLM, trial regressors only
 # subject-specific normalisation of DM without centering and scaling by std
 # label_tc normalised across trials, times and subjects
-basefile = 'source_singledot_201711281123.h5'
+#basefile = 'source_singledot_201711281123.h5'
+
+# label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials, times and subjects
+#basefile = 'source_sequential_201801261754.h5'
+
+# label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+basefile = 'source_sequential_201801291241.h5'
 
 
 #%%
-scparams = pd.read_hdf(os.path.join(ss.inf_dir, basefile), 'scalar_params')
-response_aligned = ('response_aligned' in scparams.index) and bool(
-        scparams.loc['response_aligned'])
+#scparams = pd.read_hdf(os.path.join(ss.inf_dir, basefile), 'scalar_params')
+#response_aligned = ('response_aligned' in scparams.index) and bool(
+#        scparams.loc['response_aligned'])
 
 if basefile.startswith('source_sequential'):
     regressors = ['dot_x', 'dot_y', 'accev', 'sum_dot_y_prev']
@@ -76,18 +88,18 @@ clusters = ss.get_fdrcorr_clusters(basefile, regressors, fdr_alpha,
 
 #%% define how colormap is set
 def get_colorinfo(r_name, clusters):
-    Nsig = ((  clusters.loc['response'].end_t 
-             - clusters.loc['response'].start_t) / 10 + 1).sum()
+    Nsig = ((  clusters.loc[r_name].end_t 
+             - clusters.loc[r_name].start_t) / 10 + 1).sum()
     
     # if sufficiently many significant effects
     if Nsig >= 12:
         # set non-significant effects to NaN
-        src_df_masked = ss.load_src_df(basefile, r_name_cmap, clusters, 
+        src_df_masked = ss.load_src_df(basefile, r_name, clusters, 
                                        use_basefile)
     else:
         # there are not sufficiently many significant effects after FDR, 
         # so don't mask
-        src_df_masked = ss.load_src_df(basefile, r_name_cmap, None, 
+        src_df_masked = ss.load_src_df(basefile, r_name, None, 
                                        use_basefile)
     
     if show_measure not in src_df_masked.columns:
@@ -114,7 +126,7 @@ def get_colorinfo(r_name, clusters):
 
 #%% load specific regressors
 show_measure = 'absmean'
-r_name = 'response'
+r_name = 'dot_x'
 
 # set 'mask = clusters' to only show significant effects, otherwise set to None
 mask = clusters
@@ -137,14 +149,14 @@ else:
     colorinfo = get_colorinfo(r_name_cmap, clusters)
     
     if r_name == 'dot_x':
-        x_times = [120, 170, 320, 400]
+        x_times = [120, 180, 330, 410]
     elif r_name == 'accev':
         x_times = [20, 150, 230, 300]
         
 #        colorinfo['fmin'] = 0
         colorinfo['center'] = 0
     elif r_name == 'dot_y':
-        x_times = [120, 170, 320, 400]
+        x_times = [120, 180, 330, 410]
     elif r_name == 'response':
         if response_aligned:
             x_times = [-30, 0, 30, 50]

@@ -257,7 +257,13 @@ fig2 = sensor_signal_plot('dot_x', 'MEG2241', 0.17, 'x-coordinate')
 # time window [0, 690], exclude time-outs, local normalisation of DM
 # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
 # label_tc normalised across trials, times and subjects
-basefile = 'source_sequential_201801261754.h5'
+#basefile = 'source_sequential_201801261754.h5'
+
+# label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+basefile = 'source_sequential_201801291241.h5'
 
 regressors = ['dot_x', 'dot_y', 'accev']
 
@@ -303,7 +309,7 @@ fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
 
 # dot_x
 values = second_level.loc[:, (measure, 'dot_x')].abs().mean(level='time')
-x_times = [120, 170, 320, 400]
+x_times = [120, 180, 330, 410]
 
 ax = axes[0]
 line, = ax.plot(values.index, values)
@@ -313,7 +319,7 @@ if measure == 'mu_mean':
     ax.set_ylabel('average posterior mu')
 elif measure == 'mean':
     ax.set_ylabel('average absolute beta')
-    for p in range(1, 3):
+    for p in range(1, 4):
         ax.plot(values.index, 
                 second_level_perms.loc[p, (measure, 'dot_x')].abs().mean(level='time'),
                 ':', color=line.get_color(), lw=1)
@@ -321,7 +327,7 @@ ax.set_title('x-coordinate', fontdict={'fontsize': 12})
 
 # dot_y
 values = second_level.loc[:, (measure, 'dot_y')].abs().mean(level='time')
-y_times = [120, 170, 320]
+y_times = [120, 180, 330]
 
 ax = axes[1]
 ax.plot(values.index, values)

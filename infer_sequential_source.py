@@ -90,9 +90,18 @@ nperm = 3
 #   less represented in the signal early after dot onset
 normDM = 'local'
 
-# whether to normalise the source signal to have mean 0 and std 1 in each area
-# across trials, time points and subjects
-normsrc = True
+# set to 'global' to normalise the source signal to have mean 0 and std 1 in 
+#   each area across trials, time points and subjects
+# set to 'trials' to normalise to mean 0, std 1 within each subject and time
+#   point, i.e., normalise only across trials, this should be more suited to
+#   the sequential analysis as it removes average tendencies that differ across
+#   time points (alternatively one could also introduce binary time point 
+#   regressors in the analysis acting as time point specific intercepts to 
+#   estimate the average tendencies explicitly, but normalising is simpler and
+#   is more reliable, because it uses all trials and not only the ones included
+#   in the sequential analysis) setting the scale of the data relative to the 
+#   variation within subjects may make results more comparable
+normsrc = 'trials'
 
 # source data to use
 
@@ -125,9 +134,10 @@ file = os.path.join(helpers.resultsdir, file)
 # create HDF5-file and save chosen options
 with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
     store['scalar_params'] = pd.Series(
-            [toolate, exclude_to, mindata, trialregs_dot, normsrc], 
-            ['toolate', 'exclude_to', 'mindata', 'trialregs_dot', 'normsrc'])
+            [toolate, exclude_to, mindata, trialregs_dot], 
+            ['toolate', 'exclude_to', 'mindata', 'trialregs_dot'])
     store['normDM'] = pd.Series(normDM)
+    store['normsrc'] = pd.Series(normsrc)
     store['srcfile'] = pd.Series(srcfile)
 
 
@@ -151,7 +161,7 @@ trials = epochs.index.get_level_values('trial').unique()
 dots = np.arange(1, min(25 + 1, epochtimes[-1] // (helpers.dotdt * 1000) + 2), 
                  dtype=int)
 
-if normsrc:
+if normsrc == 'global':
     # get mean and std of data across all subjects, trials and times
     epochs_mean = pd.read_hdf(srcfile, 'epochs_mean')
     epochs_std = pd.read_hdf(srcfile, 'epochs_std')
@@ -332,9 +342,13 @@ for perm in np.arange(nperm+1):
         with pd.HDFStore(srcfile, 'r') as store:
             epochs = store.select('label_tc', 'subject=sub').loc[sub]
             
-        # normalise each label across time points and subjects
-        if normsrc:
+        # normalise each label, if desired
+        if normsrc == 'global':
             epochs = (epochs - epochs_mean) / epochs_std
+        elif normsrc == 'trials':
+            epochs = epochs.unstack('time')
+            epochs = (epochs - epochs.mean()) / epochs.std()
+            epochs = epochs.stack('time')
         
         for t0 in times:
             print('\rsubject = %2d, t0 = %3d' % (sub, t0), end='', flush=True)
