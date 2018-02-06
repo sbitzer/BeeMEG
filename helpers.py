@@ -288,7 +288,7 @@ def find_precomputed_epochs(hfreq, sfreq, window, chtype, bl,
             sfreq, window[0], window[1], chtype, blstr)
     file = os.path.join(megdatadir, fname)
     if os.path.isfile(file):
-        return pd.read_hdf(file)
+        return file
     
     # otherwise check whether there are files for which only the time window
     # differs
@@ -322,6 +322,8 @@ def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
                                        megdatadir)
     
     if file is None:
+        fresh = True
+        
         if bl is None:
             blstr = ''
         else:
@@ -373,6 +375,24 @@ def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
             with pd.HDFStore(file, mode='a', complib='blosc', 
                              complevel=7) as store:
                 store.append('epochs', epochdf)
+                
+            if fresh:
+                mean = epochdf.mean()
+            else:
+                mean += epochdf.mean()
+        
+        mean = mean / len(subjects)
+
+        with pd.HDFStore(file, 'r+') as store:
+            sub = subjects[0]
+            std = ((store.select('epochs', 'subject==sub') - mean)**2).sum()
+            for sub in subjects[1:]:
+                std += ((store.select('epochs', 'subject==sub') - mean)**2).sum()
+                
+            std = np.sqrt(std / (store.get_storer('label_tc').nrows - 1.5))
+            
+            store['epochs_mean'] = mean
+            store['epochs_std'] = std
         
         if save_evoked:
             evoked = epochs.average()
