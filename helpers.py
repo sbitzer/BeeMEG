@@ -306,44 +306,43 @@ def find_precomputed_epochs(hfreq, sfreq, window, chtype, bl,
         filewin = [float(filewin[0]), float(filewin[1])]
         
         if filewin[0] <= window[0] and filewin[1] >= window[1]:
-            epochs = pd.read_hdf(file)
-            
-            filetimes = epochs.index.get_level_values('time')
-            window = np.array(window) * 1000
-            
-            if window[0] == window[1]:
-                time = filetimes[np.argmin(np.abs(filetimes - window[0]).values)]
-                return epochs.xs(time, level='time', drop_level=False)
-            else:
-                return epochs[np.logical_and(filetimes >= window[0], 
-                                             filetimes <= window[1])]
+            return file
             
     return None
 
-            
-def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag', 
-                    bl=None, megdatadir=megdatadir, save_evoked=False):
+
+def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
+                          bl=None, megdatadir=megdatadir, save_evoked=False,
+                          force_create=False):
     
-    if bl is None:
-        blstr = ''
+    if force_create:
+        file = None
     else:
-        blstr = '_bl%.2f-%.2f' % bl
-    fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s%s.h5' % (hfreq,
-            sfreq, window[0], window[1], chtype, blstr)
-    file = os.path.join(megdatadir, fname)
+        file = find_precomputed_epochs(hfreq, sfreq, window, chtype, bl, 
+                                       megdatadir)
     
-    epochs_all = find_precomputed_epochs(hfreq, sfreq, window, chtype, bl, 
-                                         megdatadir)
-    if epochs_all is None:
+    if file is None:
+        if bl is None:
+            blstr = ''
+        else:
+            blstr = '_bl%.2f-%.2f' % bl
+        fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s%s.h5' % (hfreq,
+                sfreq, window[0], window[1], chtype, blstr)
+        file = os.path.join(megdatadir, fname)
+        
+        with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
+            store['scalar_params'] = pd.Series(
+                    [hfreq, sfreq], ['hfreq', 'sfreq'])
+            store['str_params'] = pd.Series([chtype], ['chtype'])
+            store['bl'] = pd.Series(bl)
+            store['window'] = pd.Series(window)
+            
         subjects = find_available_subjects(megdatadir=megdatadir)
         
-        # channel connectivity from FieldTrip for cluster analysis
-        connectivity, co_channels = mne.channels.read_ch_connectivity(
-            '/home/bitzer/proni/BeeMEG/MEG/neuromag306mag_neighb.mat')
-        
-        fresh = True
         for sub in subjects:
-            print('loading subject %2d' % sub)
+            print('\ncreating data for subject %2d' % sub)
+            print('----------------------------')
+        
             # load MNE epochs
             epochs = load_meg_epochs_from_sdat(sub, megdatadir)
             
@@ -364,29 +363,39 @@ def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag',
             # smooth
             if hfreq < sfreq:
                 epochs.savgol_filter(hfreq)
-            
-            # get in data frame with my index
-            df = epochs.to_data_frame()
-            df.index = pd.MultiIndex.from_product([[sub], np.arange(480)+1, 
-                    df.index.levels[2]], names=['subject', 'trial', 'time'])
-            
-            if fresh:
-                if save_evoked:
-                    evoked = epochs.average()
-                    evoked.save(os.path.join(megdatadir, 'evoked_'
-                            'sfreq%.1f_window%.2f-%.2f_%s-ave.fif' % (
-                            sfreq, window[0], window[1], chtype)))
                 
-                epochs_all = df
-                fresh = False
-            else:
-                epochs_all = pd.concat([epochs_all, df], axis=0)
-            
-            print('')
-            
-            epochs_all.to_hdf(file, 'epochs_all', mode='w', complevel=7, complib='zlib')
+            # get in data frame with my index
+            epochdf = epochs.to_data_frame()
+            epochdf.index = pd.MultiIndex.from_product(
+                    [[sub], np.arange(480)+1, epochdf.index.levels[2]], 
+                    names=['subject', 'trial', 'time'])
+        
+            with pd.HDFStore(file, mode='a', complib='blosc', 
+                             complevel=7) as store:
+                store.append('epochs', epochdf)
+        
+        if save_evoked:
+            evoked = epochs.average()
+            evoked.save(os.path.join(
+                    megdatadir, 
+                    'evoked_sfreq%.1f_window%.2f-%.2f_%s-ave.fif' % (
+                            sfreq, window[0], window[1], chtype)))
     
-    return epochs_all
+    return file
+
+
+def load_meg_epochs(hfreq=10, sfreq=100, window=[0.4, 0.7], chtype='mag', 
+                    bl=None, megdatadir=megdatadir, save_evoked=False):
+    
+    file = create_meg_epochs_hdf(hfreq, sfreq, window, chtype, bl, megdatadir, 
+                                 save_evoked)
+    
+    epochs = pd.read_hdf(file, 'epochs')
+    epochs = epochs.loc[
+            (slice(None), slice(None), 
+             slice(int(window[0] * 1000), int(window[1] * 1000))), :]
+    
+    return epochs
 
 
 def load_evoked_container(sfreq=100, window=[0.4, 0.7], chtype='mag', 
