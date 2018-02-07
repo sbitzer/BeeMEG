@@ -16,7 +16,13 @@ import source_statistics as ss
 
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, 
 # choice flipped dot_x and accev, move_dist, sum_dot_y, constregs=0 for 1st dot
-resfile = 'meg_sequential_201707031205.h5'
+#resfile = 'meg_sequential_201707031205.h5'
+
+# baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+resfile = 'meg_sequential_201802061518.h5'
 
 resfile = os.path.join(helpers.resultsdir, resfile)
 
@@ -62,14 +68,14 @@ fig = plt.figure(figsize=(7.5, 4.5))
 xav_ax = plt.subplot(2, 2, 1)
 yav_ax = plt.subplot(2, 2, 2, sharey=xav_ax, sharex=xav_ax)
 
-x_times = np.array([120, 170, 250, 330, 400, 480, 570])
-y_times = np.array([140, 190, 320, 390, 640])
+x_times = np.array([120, 180, 250, 330, 400, 490, 570])
+y_times = np.array([140, 200, 330, 390, 640])
 T = len(x_times) + len(y_times)
 
 xt_axes = [plt.subplot(2, T, T+p+1) for p in range(len(x_times))]
 yt_axes = [plt.subplot(2, T, T+len(x_times)+p+1) for p in range(len(y_times))]
 
-nperm = 2
+nperm = 3
 
 linecol = '#4c72b0'
 
@@ -106,16 +112,18 @@ ev = mne.EvokedArray(values.values.reshape(102, values.index.levels[1].size),
                      evoked.info, tmin=values.index.levels[1][0], 
                      nave=480*5)
 
-ev.plot_topomap(x_times/1000, scale=1, vmin=vmin, vmax=vmax, image_interp='nearest', 
-                unit='beta', outlines='skirt', axes=xt_axes, colorbar=False);
+ev.plot_topomap(x_times/1000, scalings=1, vmin=vmin, vmax=vmax, 
+                image_interp='nearest', sensors=False,
+                units='beta', outlines='skirt', axes=xt_axes, colorbar=False);
 
 values = second_level.xs(0)[('mean', 'dot_y')]
 ev = mne.EvokedArray(values.values.reshape(102, values.index.levels[1].size), 
                      evoked.info, tmin=values.index.levels[1][0], 
                      nave=480*5)
 
-ev.plot_topomap(y_times/1000, scale=1, vmin=vmin, vmax=vmax, image_interp='nearest', 
-                unit='beta', outlines='skirt', axes=yt_axes, colorbar=False);
+ev.plot_topomap(y_times/1000, scalings=1, vmin=vmin, vmax=vmax, 
+                image_interp='nearest', sensors=False,
+                units='beta', outlines='skirt', axes=yt_axes, colorbar=False);
                 
 
 # manually tune axes positions

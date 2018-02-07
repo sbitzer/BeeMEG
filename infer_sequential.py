@@ -90,8 +90,8 @@ nperm = 3
 #   less represented in the signal early after dot onset
 normDM = 'local'
 
-# set to 'global' to normalise the source signal to have mean 0 and std 1 in 
-#   each area across trials, time points and subjects
+# set to 'global' to normalise the data to have mean 0 and std 1 in 
+#   each data label across trials, time points and subjects
 # set to 'trials' to normalise to mean 0, std 1 within each subject and time
 #   point, i.e., normalise only across trials, this should be more suited to
 #   the sequential analysis as it removes average tendencies that differ across
@@ -101,32 +101,44 @@ normDM = 'local'
 #   is more reliable, because it uses all trials and not only the ones included
 #   in the sequential analysis) setting the scale of the data relative to the 
 #   variation within subjects may make results more comparable
-normsrc = 'trials'
+normdata = 'trials'
 
-# source data to use
+# data to use, 'meg' for MEG channels, 'source' for sources
+datatype = 'meg'
 
-# label mode = mean, long epochs, HCPMMP_5_8
-srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
-
-# label mode = mean
-#srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
-
-# label mode = mean_flip
-#srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
-
-# label mode= None, lselection=[V1, V2], window=[0, 0.4]
-#srcfile = 'source_epochs_allsubs_HCPMMP1_201708151431.h5'
-
-# label mode = (abs) max
-#srcfile = 'source_epochs_allsubs_HCPMMP1_201706271717.h5'
-
-# label mode= None, lselection=pre-motor and motor areas, window=[0.3, 0.9]
-#srcfile = 'source_epochs_allsubs_HCPMMP1_201710231731.h5'
-
-srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
+if datatype == 'meg':
+    sfreq = 100
+    chtype = 'mag'
+    bl = (-0.3, 0)
+    window = [0, 2.5]
+    
+    srcfile = helpers.create_meg_epochs_hdf(sfreq, sfreq, window, chtype, bl)
+    epname = 'epochs'
+    
+elif datatype == 'source':
+    # label mode = mean, long epochs, HCPMMP_5_8
+    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
+    
+    # label mode = mean
+    #srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
+    
+    # label mode = mean_flip
+    #srcfile = 'source_epochs_allsubs_HCPMMP1_201706131725.h5'
+    
+    # label mode= None, lselection=[V1, V2], window=[0, 0.4]
+    #srcfile = 'source_epochs_allsubs_HCPMMP1_201708151431.h5'
+    
+    # label mode = (abs) max
+    #srcfile = 'source_epochs_allsubs_HCPMMP1_201706271717.h5'
+    
+    # label mode= None, lselection=pre-motor and motor areas, window=[0.3, 0.9]
+    #srcfile = 'source_epochs_allsubs_HCPMMP1_201710231731.h5'
+    
+    srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
+    epname = 'label_tc'
 
 # where to store
-file = pd.datetime.now().strftime('source_sequential'+'_%Y%m%d%H%M'+'.h5')
+file = pd.datetime.now().strftime(datatype+'_sequential'+'_%Y%m%d%H%M'+'.h5')
 # tmp-file should use local directory (preventing issue with remote store)
 tmpfile = os.path.join('/media/bitzer/Data', file+'.tmp')
 file = os.path.join(helpers.resultsdir, file)
@@ -137,7 +149,7 @@ with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
             [toolate, exclude_to, mindata, trialregs_dot], 
             ['toolate', 'exclude_to', 'mindata', 'trialregs_dot'])
     store['normDM'] = pd.Series(normDM)
-    store['normsrc'] = pd.Series(normsrc)
+    store['normdata'] = pd.Series(normdata)
     store['srcfile'] = pd.Series(srcfile)
 
 
@@ -146,7 +158,7 @@ subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
 S = subjects.size
 
 with pd.HDFStore(srcfile, 'r') as store:
-    epochs = store.select('label_tc', 'subject=2')
+    epochs = store.select(epname, 'subject=2')
 
 # times stored in epochs
 epochtimes = epochs.index.levels[2]
@@ -161,7 +173,7 @@ trials = epochs.index.get_level_values('trial').unique()
 dots = np.arange(1, min(25 + 1, epochtimes[-1] // (helpers.dotdt * 1000) + 2), 
                  dtype=int)
 
-if normsrc == 'global':
+if normdata == 'global':
     # get mean and std of data across all subjects, trials and times
     epochs_mean = pd.read_hdf(srcfile, 'epochs_mean')
     epochs_std = pd.read_hdf(srcfile, 'epochs_std')
@@ -284,11 +296,11 @@ choices = subject_DM.regressors.subject_trial.response.loc[subjects]
 
 
 #%% prepare output and helpers
-srclabels = epochs.columns
+datalabels = epochs.columns
 
 first_level = pd.DataFrame([], 
         index=pd.MultiIndex.from_product([np.arange(nperm+1), 
-              srclabels, times], 
+              datalabels, times], 
               names=['permnr', 'label', 'time']),
         columns=pd.MultiIndex.from_product([subjects, ['beta', 'bse'], 
               DM.columns], names=['subject', 'measure', 'regressor']), 
@@ -297,7 +309,7 @@ first_level.sort_index(axis=1, inplace=True)
 
 first_level_diagnostics = pd.DataFrame([], 
         index=pd.MultiIndex.from_product([np.arange(nperm+1), 
-              srclabels, times], 
+              datalabels, times], 
               names=['permnr', 'label', 'time']),
         columns=pd.MultiIndex.from_product([subjects, ['Fval', 'R2', 'llf']], 
               names=['subject', 'measure']), dtype=np.float64)
@@ -305,7 +317,7 @@ first_level_diagnostics.sort_index(axis=1, inplace=True)
 
 second_level = pd.DataFrame([], 
         index=pd.MultiIndex.from_product([np.arange(nperm+1), 
-              srclabels, times], 
+              datalabels, times], 
               names=['permnr', 'label', 'time']), 
         columns=pd.MultiIndex.from_product([['mean', 'std', 'tval', 'mlog10p'], 
               DM.columns], names=['measure', 'regressor']), dtype=np.float64)
@@ -340,12 +352,12 @@ for perm in np.arange(nperm+1):
     
     for s, sub in enumerate(subjects):
         with pd.HDFStore(srcfile, 'r') as store:
-            epochs = store.select('label_tc', 'subject=sub').loc[sub]
+            epochs = store.select(epname, 'subject=sub').loc[sub]
             
         # normalise each label, if desired
-        if normsrc == 'global':
+        if normdata == 'global':
             epochs = (epochs - epochs_mean) / epochs_std
-        elif normsrc == 'trials':
+        elif normdata == 'trials':
             epochs = epochs.unstack('time')
             epochs = (epochs - epochs.mean()) / epochs.std()
             epochs = epochs.stack('time')
@@ -403,10 +415,10 @@ for perm in np.arange(nperm+1):
                          "(%5.2f) for subject %d, t0 = %d!" % (
                                  DM_condition_numbers.loc[t0, sub], sub, t0))
             
-            # run regression for each source label, but only for data sets
+            # run regression for each data label, but only for data sets
             # with at least as many data points as there are regressors
             if model.shape[0] >= model.DM.shape[1]:
-                for label in srclabels:
+                for label in datalabels:
                     res = sm.OLS(model[('data', label)].values, 
                                  model.DM.values, hasconst=True).fit()
                 
@@ -423,7 +435,7 @@ for perm in np.arange(nperm+1):
                                                 (sub, 'llf')] = res.llf
     
     print('\ncomputing second level ...')
-    for label in srclabels:
+    for label in datalabels:
         for t0 in times:
             params = first_level.loc[(perm, label, t0), 
                                      (slice(None), 'beta', slice(None))]
