@@ -389,7 +389,7 @@ def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
             for sub in subjects[1:]:
                 std += ((store.select('epochs', 'subject==sub') - mean)**2).sum()
                 
-            std = np.sqrt(std / (store.get_storer('label_tc').nrows - 1.5))
+            std = np.sqrt(std / (store.get_storer('epochs').nrows - 1.5))
             
             store['epochs_mean'] = mean
             store['epochs_std'] = std
