@@ -42,10 +42,10 @@ fixed_ori = True
 
 if fixed_ori:
     inv_fixed = True
-    inv_loose = None
 else:
     inv_fixed = False
-    inv_loose = 0.2
+
+inv_loose = 'auto'
     
 inv_depth = 0.8
 
