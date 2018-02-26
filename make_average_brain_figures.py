@@ -15,8 +15,7 @@ import os
 
 from surfer import Brain
 
-figdir = os.path.expanduser('~/ZIH/talks/Stefans_Antrittsvortrag_20180124')
-#figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
+figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 
 #%%
@@ -57,7 +56,7 @@ use_basefile = show_measure in ss.basefile_measures
 
 r_name = 'dot_x'
 
-twin = [400, 500]
+twin = [300, 500]
 
 winclusters = clusters.loc[r_name]
 
@@ -132,16 +131,16 @@ hemi = 'lh'
 brain = brain_plot(hemi)
 
 #%% stitch images from different hemispheres together
-#infiles = []
-#for time in times:
-#    time_idx = times.get_loc(time)
-#    infiles += [
-#            os.path.join(figdir, 
-#                         filepat_base + '_{}_{}_{:02d}.png'.format(
-#                                 'lh', r_name, time_idx)),
-#            os.path.join(figdir, 
-#                         filepat_base + '_{}_{}_{:02d}.png'.format(
-#                                 'rh', r_name, time_idx))]
-#outfile = os.path.join(figdir, filepat_base + '_{}.png'.format(r_name))
-#os.system("montage -tile 2x{:d} -geometry +0+0 {} {}".format(
-#        len(times), ' '.join(infiles), outfile))
+infiles = []
+for time in times:
+    time_idx = times.get_loc(time)
+    infiles += [
+            os.path.join(figdir, 
+                         filepat_base + '_{}_{}.png'.format(
+                                 'lh', r_name)),
+            os.path.join(figdir, 
+                         filepat_base + '_{}_{}.png'.format(
+                                 'rh', r_name))]
+outfile = os.path.join(figdir, filepat_base + '_{}.png'.format(r_name))
+os.system("montage -tile 2x1 -geometry +0+0 {} {}".format(
+        ' '.join(infiles), outfile))
