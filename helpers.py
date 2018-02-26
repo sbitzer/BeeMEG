@@ -275,7 +275,41 @@ def load_meg_epochs_from_sdat(subject, megdatadir=megdatadir):
     return epochs
 
 
-def find_precomputed_epochs(hfreq, sfreq, window, chtype, bl, 
+def chtype_str(megtype, **type_kws):
+    chstr = ''
+    
+    if megtype:
+        if megtype == True:
+            chstr += 'meg'
+        else:
+            chstr += megtype
+        
+    for k, v in type_kws.items():
+        if v:
+            chstr += k
+            
+    return chstr
+
+
+def filt_str(filt_freqs, bpfilter=True):
+    if bpfilter:
+        filtstr = '_filt'
+        
+        frstrs = []
+        for freq in filt_freqs:
+            if freq is None:
+                frstrs.append('None')
+            else:
+                frstrs.append('%04.1f' % freq)
+                
+        filtstr += '-'.join(frstrs)
+    else:
+        filtstr = ''
+        
+    return filtstr
+    
+
+def find_precomputed_epochs(hfreq, sfreq, window, chstr, bl, filtstr, 
                             megdatadir=megdatadir):
     
     if bl is None:
@@ -284,16 +318,16 @@ def find_precomputed_epochs(hfreq, sfreq, window, chtype, bl,
         blstr = '_bl%.2f-%.2f' % bl
         
     # if there is a file with the exact name, return data from that
-    fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s%s.h5' % (hfreq,
-            sfreq, window[0], window[1], chtype, blstr)
+    fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s%s%s.h5' % (hfreq,
+            sfreq, window[0], window[1], chstr, blstr, filtstr)
     file = os.path.join(megdatadir, fname)
     if os.path.isfile(file):
         return file
     
     # otherwise check whether there are files for which only the time window
     # differs
-    fname_mask = 'epochs_hfreq%.1f_sfreq%.1f_window*_%s%s.h5' % (hfreq,
-            sfreq, chtype, blstr)
+    fname_mask = 'epochs_hfreq%.1f_sfreq%.1f_window*_%s%s%s.h5' % (hfreq,
+            sfreq, chstr, blstr, filtstr)
     files = glob.glob(os.path.join(megdatadir, fname_mask))
     
     # sort files according to their size (smallest first)
@@ -301,25 +335,39 @@ def find_precomputed_epochs(hfreq, sfreq, window, chtype, bl,
     files.sort_index(inplace=True)
     
     # return data from the first file which includes all requested data
-    for file in files.values[:, 0]:
-        filewin = re.match(r'.*window(-?\d\.\d\d)-(-?\d\.\d\d)', file).groups()
-        filewin = [float(filewin[0]), float(filewin[1])]
-        
-        if filewin[0] <= window[0] and filewin[1] >= window[1]:
-            return file
+    if files.size > 0:
+        for file in files.values[:, 0]:
+            filewin = re.match(r'.*window(-?\d\.\d\d)-(-?\d\.\d\d)', 
+                               file).groups()
+            filewin = [float(filewin[0]), float(filewin[1])]
+            
+            if filewin[0] <= window[0] and filewin[1] >= window[1]:
+                return file
             
     return None
 
 
 def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
                           bl=None, megdatadir=megdatadir, save_evoked=False,
-                          force_create=False):
+                          force_create=False, filt_freqs=None, **type_kws):
+    
+    chstr = chtype_str(chtype, **type_kws)
+    
+    if filt_freqs is None:
+        bpfilter = False
+    else:
+        bpfilter = True
+        filt_freqs = np.atleast_1d(filt_freqs)
+        if filt_freqs.size == 1:
+            filt_freqs = np.array([filt_freqs[0], None])
+    
+    filtstr = filt_str(filt_freqs, bpfilter)
     
     if force_create:
         file = None
     else:
-        file = find_precomputed_epochs(hfreq, sfreq, window, chtype, bl, 
-                                       megdatadir)
+        file = find_precomputed_epochs(hfreq, sfreq, window, chstr, bl, 
+                                       filtstr, megdatadir)
     
     if file is None:
         fresh = True
@@ -328,8 +376,8 @@ def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
             blstr = ''
         else:
             blstr = '_bl%.2f-%.2f' % bl
-        fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s%s.h5' % (hfreq,
-                sfreq, window[0], window[1], chtype, blstr)
+        fname = 'epochs_hfreq%.1f_sfreq%.1f_window%.2f-%.2f_%s%s%s.h5' % (hfreq,
+                sfreq, window[0], window[1], chstr, blstr, filtstr)
         file = os.path.join(megdatadir, fname)
         
         with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
@@ -342,14 +390,21 @@ def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
         subjects = find_available_subjects(megdatadir=megdatadir)
         
         for sub in subjects:
-            print('\ncreating data for subject %2d' % sub)
-            print('----------------------------')
+            print('\ncreating data for subject %2d' % sub, flush=True)
+            print('----------------------------', flush=True)
         
             # load MNE epochs
             epochs = load_meg_epochs_from_sdat(sub, megdatadir)
             
             # pick specific channels
-            epochs = epochs.pick_types(meg=chtype)
+            epochs = epochs.pick_types(meg=chtype, **type_kws)
+            
+            # filter, if desired
+            if bpfilter:
+                epochs = epochs.filter(
+                        filt_freqs[0], filt_freqs[1], 
+                        picks=np.arange(len(epochs.ch_names)),
+                        fir_design='firwin')
             
             # correct for baseline
             if bl is not None:
@@ -399,7 +454,7 @@ def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
             evoked.save(os.path.join(
                     megdatadir, 
                     'evoked_sfreq%.1f_window%.2f-%.2f_%s-ave.fif' % (
-                            sfreq, window[0], window[1], chtype)))
+                            sfreq, window[0], window[1], chstr)))
     
     return file
 
