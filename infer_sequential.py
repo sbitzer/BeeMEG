@@ -108,11 +108,13 @@ datatype = 'meg'
 
 if datatype == 'meg':
     sfreq = 100
-    chtype = 'mag'
+    megtype = False
+    eog = True
     bl = (-0.3, 0)
     window = [0, 2.5]
     
-    srcfile = helpers.create_meg_epochs_hdf(sfreq, sfreq, window, chtype, bl)
+    srcfile = helpers.create_meg_epochs_hdf(sfreq, sfreq, window, megtype, bl,
+                                            filt_freqs=2, eog=eog)
     epname = 'epochs'
     
 elif datatype == 'source':
