@@ -19,15 +19,18 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 
 #%% load data
-r_name = 'response'
+r_name = 'evoked'
 measure = 'tval'
-make_figures = True
+fdr_alpha = 0.01
+make_figures = False
 
 # can be:
 # '' for all first-dot-onset-aligned data
 # 'exclate' for first-dot-onset-aligned data excluding data close to response
 # 'ralign' for response aligned data
-datatype = 'ralign'
+# 'eog' for EOG event regression results
+# 'evoked' evoked (average) signals for a selected time window
+datatype = 'evoked'
 
 is_singledot_regressor = lambda name: (
            (name in ['entropy', 'trial_time', 'response'])
@@ -61,6 +64,13 @@ else:
         # subject-specific normalisation of DM without centering and scaling by std
         # label_tc normalised across trials, times and subjects
         basefile = 'source_sequential_201710231824.h5'
+    elif datatype == 'eog':
+        # eog event regression
+        basefile = 'eog_source_201802091232.h5'
+    
+    elif datatype == 'evoked':
+        # evoked sources 300 to 500 ms after response
+        basefile = 'evoked_source_201802091710.h5'
 
 if len(datatype) > 0 and not datatype.startswith('_'):
     datatype = '_' + datatype
@@ -78,19 +88,15 @@ def get_colorinfo(measure, src_df, fdr_alpha=0.01):
         fmid = src_df[pdiff <= 0].sort_values('p_fdr')[measure].abs().iloc[-1]
     except IndexError:
         print('No FDR-corrected significant effects!')
-        if measure == 'tval':
-            fmin = src_df[measure].abs().min()
-            fmax = src_df[measure].abs().max()
-            colorinfo = {'fmin': fmin, 
-                         'fmid': fmax, 
-                         'fmax': fmax + fmax - fmin,
-                         'center': 0}
-    else:
-        if measure == 'tval':
-            colorinfo = {'fmin': fmid / 2., 
-                         'fmid': fmid, 
-                         'fmax': src_df[measure].abs().max(),
-                         'center': 0}
+        fmid = src_df[measure].abs().quantile(0.95)
+    
+    fmax = src_df[measure].abs().max()
+    colorinfo = {'fmin': fmid / 2., 
+                 'fmid': fmid, 
+                 'fmax': fmax}
+    
+    if measure == 'tval':
+        colorinfo['center'] = 0
         
     return colorinfo
 
@@ -100,7 +106,10 @@ views = {'rh': ({'azimuth': 6.8, 'elevation': 60.3,
                  'focalpoint': (-0.60, 0., 0.)}, 90, 295.)}
 
 def add_motor_labels(brain, src_df):
-    lnames = src_df.index.levels[0].map(lambda l: l[:-7]).unique()
+    try:
+        lnames = src_df.index.levels[0].map(lambda l: l[:-7]).unique()
+    except AttributeError:
+        lnames = src_df.index.map(lambda l: l[:-7]).unique()
     
     premotor = ss.Glasser_areas[
             ss.Glasser_areas['main section']==8]['area name'].values
@@ -136,7 +145,7 @@ brain = Brain('fsaverage', 'both', 'inflated', cortex='low_contrast',
 add_motor_labels(brain, src_df)
 
 sv.show_label_vertices(src_df, brain, measure, 
-                       **get_colorinfo(measure, src_df))
+                       **get_colorinfo(measure, src_df, fdr_alpha))
 
 
 #%% save figures
