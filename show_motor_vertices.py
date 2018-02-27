@@ -70,7 +70,9 @@ else:
     
     elif datatype == 'evoked':
         # evoked sources 300 to 500 ms after response
-        basefile = 'evoked_source_201802091710.h5'
+#        basefile = 'evoked_source_201802091710.h5'
+        # evoked sources -1000 to 1000 after response
+        basefile = 'evoked_source_201802271701.h5'
 
 if len(datatype) > 0 and not datatype.startswith('_'):
     datatype = '_' + datatype

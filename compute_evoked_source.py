@@ -27,7 +27,9 @@ normdata = 'trials'
 
 response_aligned = True
 
-timeslice = [300, 500]
+exclude_to = True
+
+timeslice = [-1000, 1000]
 
 
 #%% create output file
@@ -38,7 +40,9 @@ file = os.path.join(helpers.resultsdir, file)
 
 # create HDF5-file and save chosen options
 with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
-    store['scalar_params'] = pd.Series(response_aligned, ['response_aligned'])
+    store['scalar_params'] = pd.Series(
+            [response_aligned, exclude_to], 
+            ['response_aligned', 'exclude_to'])
     store['normdata'] = pd.Series(normdata)
     store['srcfile'] = pd.Series(src_path)
 
@@ -62,6 +66,7 @@ datalabels = epochs.columns
 
 #%% reindex time if necessary and select desired time slice
 rts = regressors.subject_trial.RT.loc[subjects] * 1000
+choices = regressors.subject_trial.response.loc[subjects]
 
 # if RTs are an exact multiple of 5, numpy will round both 10+5 and 20+5 to
 # 20; so to not get duplicate times add a small jitter
@@ -150,8 +155,20 @@ for perm in np.arange(nperm+1):
         if response_aligned:
             epochs.index = rtindex(sub)
             
+        # exclude timed out trials from analysis, if desired
+        if exclude_to:
+            ch_sub = choices.loc[sub]
+            to = ch_sub[ch_sub == helpers.toresponse[0]].index.values
+            
+            # nan-ing the first column only is sufficient when later dropping
+            # all rows with at least one nan
+            epochs.loc[(sub, to, slice(None)), epochs.columns[0]] = np.nan
+
         # permute
         epochs.loc[:] = epochs.values[permutation.flatten(), :]
+        
+        # drop nan-ed data
+        epochs.dropna(inplace=True)
         
         # select desired times
         if len(timeslice) > 0:
