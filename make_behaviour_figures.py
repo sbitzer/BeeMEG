@@ -6,6 +6,7 @@ Created on Mon Jul 10 18:21:58 2017
 @author: bitzer
 """
 
+import helpers
 import regressors
 import subject_DM
 import seaborn as sns
@@ -45,13 +46,17 @@ fig.savefig(os.path.join(figdir, 'pooledRTs.png'),
 
 #%% plot evidence-choice correlations
 dots = np.arange(1, 15)
+subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
 
 fig, axes = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(7.5, 3.5))
+
+medianRT = regressors.subject_trial.loc[subjects, 'RT'].groupby(
+        'subject').median().mean()
 
 for coord, ax in zip(['x', 'y'], axes):
     r_names = ['dot_'+coord, 'sum_dot_'+coord, 'response']
     coord = coord + '-coordinate'
-    DM = subject_DM.get_trial_DM(dots, r_names=r_names)
+    DM = subject_DM.get_trial_DM(dots, subjects, r_names)
     
     def get_corrs(r_name):
         dmcols = [name for name in DM.columns if ((name == 'response') or 
@@ -74,6 +79,12 @@ for coord, ax in zip(['x', 'y'], axes):
                   dodge=True, ax=ax)
     
     ax.set_title(coord)
+
+for ax in axes:
+    # the first dot is shown at x-value 0 and the next dot at x=1, the x-axis
+    # thus is time after first dot onset in 100 ms-units
+    ax.set_autoscale_on(False)
+    ax.plot(np.r_[1, 1] * medianRT * 10, ax.get_ylim(), ':k', label='median RT')
 
 #ax.set_ylim([0, 1])
 axes[0].set_ylabel('correlation with choice');
