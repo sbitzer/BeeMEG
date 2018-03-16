@@ -11,7 +11,7 @@ import helpers
 import pandas as pd
 import subject_DM
 from scipy.stats import ttest_1samp
-import os
+import os, gc
 import statsmodels.api as sm
 from warnings import warn
 
@@ -60,7 +60,7 @@ trialregs_dot = 0
 # enter the analysis
 # note that normalisation of data is still over all times in srcfile
 #timeslice = [0, 690]
-timeslice = [0, 690]
+timeslice = [250, 600]
 
 # How many permutations should be computed?
 nperm = 3
@@ -104,7 +104,7 @@ normDM = 'local'
 normdata = 'trials'
 
 # data to use, 'meg' for MEG channels, 'source' for sources
-datatype = 'meg'
+datatype = 'source'
 
 if datatype == 'meg':
     sfreq = 100
@@ -119,7 +119,7 @@ if datatype == 'meg':
     
 elif datatype == 'source':
     # label mode = mean, long epochs, HCPMMP_5_8
-    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
+#    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
     
     # label mode = mean
     #srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
@@ -135,6 +135,10 @@ elif datatype == 'source':
     
     # label mode= None, lselection=pre-motor and motor areas, window=[0.3, 0.9]
     #srcfile = 'source_epochs_allsubs_HCPMMP1_201710231731.h5'
+    
+    # label mode = None, lselection=premotor, motor, mid cingulate, parietal
+    # window = [-0.3, 2.5], no baseline correction before source reconstruction
+    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201802081827.h5'
     
     srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
     epname = 'label_tc'
@@ -179,6 +183,8 @@ if normdata == 'global':
     # get mean and std of data across all subjects, trials and times
     epochs_mean = pd.read_hdf(srcfile, 'epochs_mean')
     epochs_std = pd.read_hdf(srcfile, 'epochs_std')
+
+gc.collect()
 
 
 #%% generate dot-sequential DM including all possible dots
@@ -355,7 +361,8 @@ for perm in np.arange(nperm+1):
     for s, sub in enumerate(subjects):
         with pd.HDFStore(srcfile, 'r') as store:
             epochs = store.select(epname, 'subject=sub').loc[sub]
-            
+        gc.collect()
+        
         # normalise each label, if desired
         if normdata == 'global':
             epochs = (epochs - epochs_mean) / epochs_std

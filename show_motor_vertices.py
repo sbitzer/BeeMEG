@@ -19,10 +19,14 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 
 #%% load data
-r_name = 'evoked'
+r_name = 'dot_x'
 measure = 'tval'
 fdr_alpha = 0.01
-make_figures = False
+
+# None for no figure and movie generation
+# otherwise a list of times for which figures should be generated
+# if more than one times is given, a movie will be created from the figures
+make_figures = [490]
 
 # can be:
 # '' for all first-dot-onset-aligned data
@@ -30,7 +34,7 @@ make_figures = False
 # 'ralign' for response aligned data
 # 'eog' for EOG event regression results
 # 'evoked' evoked (average) signals for a selected time window
-datatype = 'evoked'
+datatype = 'exclate'
 
 is_singledot_regressor = lambda name: (
            (name in ['entropy', 'trial_time', 'response'])
@@ -57,7 +61,13 @@ else:
         # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
         # subject-specific normalisation of DM without centering and scaling by std
         # label_tc normalised across trials, times and subjects
-        basefile = 'source_sequential_201711031951.h5'
+#        basefile = 'source_sequential_201711031951.h5'
+        
+        # vertices of premotor, motor, paracentral and superior parietal
+        # no baseline correction, toolate=-200, time window [250, 600]
+        # local normalisation of DM, trial normalisation of data
+        # x/y coordinates, absolutes, percupt, accev, sum_dot_y_prev
+        basefile = 'source_sequential_201803131115.h5'
     elif datatype == '':
         # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
         # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
@@ -151,9 +161,11 @@ sv.show_label_vertices(src_df, brain, measure,
 
 
 #%% save figures
-if make_figures:
-    #times = [400]
-    times = src_df.index.levels[1]
+if make_figures is not None:
+    if len(make_figures) == 0:
+        times = src_df.index.levels[1]
+    else:
+        times = make_figures
     
     outfiles = []
     for time in times:
