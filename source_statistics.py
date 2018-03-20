@@ -472,7 +472,8 @@ except ImportError:
     print('No GPy found. Skipping definition of GP functions in '
           'source_statistics.')
 else:
-    def plot_gp_result(ax, xpred, gpm, color, label, xx=None, coverage=0.95):
+    def plot_gp_result(ax, xpred, gpm, color='C0', label='GP prediction', 
+                       return_significant=False, xx=None, coverage=0.95):
         if xx is None:
             xx = xpred
             
@@ -484,12 +485,16 @@ else:
         lw = plt.rcParams["lines.linewidth"] * 1.5
         
         stdmult = scipy.stats.norm.ppf([0.5 - coverage/2, 0.5 + coverage/2])
+        lower = gpmean + stdmult[0] * gpstd
+        upper = gpmean + stdmult[1] * gpstd
         
         # Draw the regression line and confidence interval
         ax.plot(xx, gpmean, color=color, lw=lw, label=label)
-        ax.fill_between(xx[:, 0], gpmean + stdmult[0] * gpstd, 
-                        gpmean + stdmult[1] * gpstd, facecolor=color, 
-                        alpha=.15)
+        ax.fill_between(xx[:, 0], lower, upper, facecolor=color, alpha=.15)
+        
+        if return_significant:
+            return xpred[(lower > 0) | (upper < 0)]
+        
         
     def fitgp(xvals, data, Zvar=None, biasstd=1.0, smooth=True, gptype='sparse'):
         if data.ndim < 2:
@@ -543,7 +548,7 @@ else:
         
     
     def gpregplot(r_name, label, rdata, x_estimator=None, x_bins=10, ax=None, 
-                  line_kws=None, scatter_kws=None, xrange=[-1.5, 1.5],
+                  plot_kws=None, scatter_kws=None, xrange=[-1.5, 1.5], 
                   gp_kws={'gptype': 'sparse'}):
         
         if gp_kws['gptype'] == 'sparse':
@@ -557,6 +562,9 @@ else:
             Y = grouped[label].mean()
             X = Y.index.values
             Zvar = grouped[label].var() / grouped[label].count()
+            
+        if not 'return_significant' in plot_kws.keys():
+            plot_kws['return_significant'] = False
         
         gpm = fitgp(X, Y, Zvar, **gp_kws)
         
@@ -566,7 +574,7 @@ else:
             fig, ax = plt.subplots()
         
         # plot regression function
-        plot_gp_result(ax, xpred, gpm, line_kws['color'], line_kws['label'])
+        significant = plot_gp_result(ax, xpred, gpm, **plot_kws)
         
         # scatterplot
         bin_edges = np.linspace(*xrange, num=x_bins+1)
@@ -574,4 +582,7 @@ else:
         ax = sns.regplot(r_name, label, rdata, x_estimator=np.mean, x_bins=binx, 
                          ax=ax, scatter_kws=scatter_kws, fit_reg=False)
         
-        return gpm
+        if plot_kws['return_significant']:
+            return gpm, significant
+        else:
+            return gpm
