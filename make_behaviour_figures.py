@@ -11,11 +11,14 @@ import regressors
 import subject_DM
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 import pandas as pd
 import numpy as np
 import os
 
-figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
+figdir = helpers.figdir
+
+subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
 
 
 #%% plot across-subject RT distribution
@@ -46,7 +49,6 @@ fig.savefig(os.path.join(figdir, 'pooledRTs.png'),
 
 #%% plot evidence-choice correlations
 dots = np.arange(1, 15)
-subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
 
 fig, axes = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(7.5, 3.5))
 
@@ -96,3 +98,55 @@ fig.subplots_adjust(top=0.9, bottom=0.15, left=0.09, right=0.97, wspace=0.07)
 
 fig.savefig(os.path.join(figdir, 'choice_correlations.png'),
             dpi=300)
+
+
+#%% plot correlation between dot_x and sum_dot_x
+dots = np.arange(1, 15)
+D = dots.size
+
+correct = regressors.trial.correct
+choice = regressors.subject_trial.loc[subjects, 'response']
+dot_x = regressors.trial_dot.loc[(slice(None), dots), 'dot_x']
+sum_x = regressors.trial_dot.loc[(slice(None), dots), 'sum_dot_x']
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
+
+# correlation with dot_x
+ax = axes[0]
+dotcorrs = pd.DataFrame(
+        np.corrcoef(dot_x.unstack('trial'), sum_x.unstack('trial'))[:D, D:],
+        index=pd.Index(dots, name='xcoord'), 
+        columns=pd.Index(dots, name='sumx'))
+
+corrim = ax.imshow(dotcorrs, 'PiYG', vmin=-1, vmax=1, aspect='equal')
+ax.set_xticks(np.arange(D)); 
+ax.set_xticklabels(dots)
+ax.set_xlabel('sum of x-coordinates up to dot ...')
+ax.set_yticks(np.arange(D)); 
+ax.set_yticklabels(dots)
+ax.set_ylabel('x-coordinate for dot ...')
+cbar = fig.colorbar(corrim, ax=ax)
+cbar.set_label('correlation')
+
+# correlation with last added dot_x, correct response, choice
+ax = axes[1]
+
+choicecorrs = pd.DataFrame(
+        [np.corrcoef(sum_x.unstack('trial'), choice.loc[sub])[-1, :-1]
+         for sub in subjects], index=subjects, 
+        columns=pd.Index(dots, name='dot'))
+sns.boxplot(data=choicecorrs, ax=ax, color='C0')
+lbox = mlines.Line2D([], [], color='C0', lw=3, label='choice')
+
+l1, = ax.plot(np.diag(dotcorrs), color='C2', label='x-coord', lw=3, zorder=9)
+
+corrcorrs = pd.Series(
+        np.corrcoef(sum_x.unstack('trial'), correct)[-1, :-1],
+        index=pd.Index(dots, name='correct'))
+l2, = ax.plot(corrcorrs.values, color='C1', label='correct', lw=3, zorder=10)
+
+ax.legend(handles=[lbox, l1, l2])
+ax.set_xlabel('sum of x-coordinates up to dot ...')
+
+fig.tight_layout()
+fig.savefig(os.path.join(figdir, 'x-sumx-correlation.png'), dpi=300)
