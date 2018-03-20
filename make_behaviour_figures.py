@@ -47,6 +47,15 @@ fig.savefig(os.path.join(figdir, 'pooledRTs.png'),
             dpi=300)
 
 
+#%% scatter plot of accuracy and RT across participants
+axgrid = sns.jointplot('accuracy', 'medianRT', 
+                       data=regressors.subject.loc[subjects])
+axgrid.ax_joint.set_ylabel('median RT (s)')
+
+axgrid.fig.savefig(os.path.join(figdir, 'subject_behaviour.png'), dpi=300)
+axgrid.fig.savefig(os.path.join(figdir, 'subject_behaviour.eps'))
+
+
 #%% plot evidence-choice correlations
 dots = np.arange(1, 15)
 
