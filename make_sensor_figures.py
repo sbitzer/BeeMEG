@@ -13,6 +13,7 @@ import os
 import matplotlib.pyplot as plt
 import mne
 import source_statistics as ss
+import scipy.stats
 
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, 
 # choice flipped dot_x and accev, move_dist, sum_dot_y, constregs=0 for 1st dot
@@ -158,6 +159,18 @@ for i, ax in enumerate(yt_axes):
 # export
 fig.savefig(os.path.join(figdir, 'sensorspace_absmean.png'),
             dpi=300)
+
+
+#%% paired t-test for x vs y in late period
+slabs = second_level.loc[
+        (0, slice(None), slice(300, 500))]['mean'][['dot_x', 'dot_y']].abs()
+
+ttval, tpval = scipy.stats.ttest_rel(slabs['dot_x'], slabs['dot_y'])
+print('t-test: t = %5.2f, p=%e' % (ttval, tpval))
+
+# Wilcoxon signed rank test, because differences are not Gaussian
+wval, wpval = scipy.stats.wilcoxon(slabs['dot_x'] - slabs['dot_y'])
+print('Wilcoxon-test: W = %d, p=%e' % (wval, wpval))
 
 
 #%% average signal for response across time
