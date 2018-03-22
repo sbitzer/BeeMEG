@@ -368,39 +368,56 @@ fig.savefig(os.path.join(figdir, 'av_mu_mean_source.png'),
             dpi=300)
 
 
+#%% get tidy data of areas with largest effects for two regressors
+r_names = ['dot_x', 'dot_y']
+labels = pd.Series([second_level.loc[:, (measure, r_name)].abs().mean(
+        level='label').idxmax() for r_name in r_names], r_names)
+
+sl = second_level.loc[labels, ([measure, 'mlog10p'], r_names)].stack(
+        'regressor')
+
+# get rid of the data that I don't want to show and shouldn't influence
+# multiple comparison correction
+for r_name, label in labels.iteritems():
+    other = set(r_names).difference(set([r_name])).pop()
+    
+    sl.loc[(label, slice(None), other), measure] = np.nan
+    
+sl.dropna(inplace=True)
+
+ss.add_measure(sl, 'p_fdr')
+
+#sl['significant'] = sl.p_fdr < 0.01
+sl['significant'] = sl.mlog10p > -np.log10(0.01)
+
+
 #%% plot example time courses for the brain area which has the largest overall
 #   average effect
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
 
-# dot_x
-r_name = 'dot_x'
-label = second_level.loc[:, (measure, r_name)].abs().mean(level='label').idxmax()
-#label = 'L_V1_ROI-lh'
+rlabels = dict(dot_x='x-coordinate', dot_y='y-coordinate')
 
-ax = axes[0]
-plot_single_source_signal(r_name, label, ax);
-xl = ax.get_xlim()
-ax.plot(xl, np.r_[0, 0], ':k')
-ax.set_xlabel('time from dot onset (ms)')
-ax.set_ylabel('beta-values')
-ax.set_title('x-coordinate (%s-%s)' % (label[0], label[2:-7]))
+for r_name, ax in zip(r_names, axes):
+    label = labels[r_name]
+    
+    l, l1 = plot_single_source_signal(r_name, label, ax);
+    
+    sig = sl.loc[(label, slice(None), r_name), 'significant']
+    sig = sig.index.get_level_values('time')[sig]
+    l2, = ax.plot(sig, 0.13 * np.ones_like(sig), '.', color='#8E3A59')
+    
+    xl = sl.index.get_level_values('time').unique()[[0, -1]]
+    ax.plot(xl, np.r_[0, 0], ':k')
+    
+    ax.set_xlabel('time from dot onset (ms)')
+    ax.set_title(rlabels[r_name] + ' (%s-%s)' % (label[0], label[2:-7]))
 
-# dot_y
-r_name = 'dot_y'
-label = second_level.loc[:, (measure, r_name)].abs().mean(level='label').idxmax()
-
-ax = axes[1]
-l, l1 = plot_single_source_signal(r_name, label, ax);
-ax.plot(ax.get_xlim(), np.r_[0, 0], ':k')
-ax.set_xlabel('time from dot onset (ms)')
-ax.set_title('y-coordinate (%s-%s)' % (label[0], label[2:-7]))
-ax.set_xlim(xl)
-
-ax.legend([l, l1], ['single subjects', 'estimated mean'], 
+ax.legend([l, l1, l2], ['participants', 'estimated mean', 'p < 0.01'], 
           loc='lower right');
 
-fig.subplots_adjust(left=0.1, bottom=0.18, right=0.97)
-
+axes[0].set_ylabel('regression coefficients')
+          
+fig.tight_layout()
 fig.savefig(os.path.join(figdir, 'example_area_tcs.png'), 
             dpi=300)
 
