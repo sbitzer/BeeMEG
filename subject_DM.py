@@ -136,8 +136,8 @@ def normfun(regressor, msratio=2):
     mean = regressor.mean()
     std = regressor.std()
     
-    # don't normalise the intercept
-    if mean==1 and std==0:
+    # don't normalise constant regressors (the intercept)
+    if std==0:
         return regressor
     else:
         # subtract mean, if you can get into trouble with collinearity with the 
@@ -199,7 +199,7 @@ def cnumfun(DM):
     
     eig = np.linalg.eigvals(np.dot(DM.T, DM))
     
-    return np.sqrt(eig.max() / eig.min())
+    return np.sqrt(eig.max() / max(0, eig.min()))
 
 
 def compute_condition_number(DM, scope='full'):
