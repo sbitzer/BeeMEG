@@ -48,6 +48,15 @@ fdr_alpha = 0.01
 clusters = ss.get_fdrcorr_clusters(basefile, regressors, fdr_alpha, 
                                    use_basefile=True)
 
+# save all significant dot_x clusters to csv-file
+def to_csv(areas, fname):
+    areas['label'] = areas['label'].map(lambda x: x[:-7])
+    areas.to_csv(fname)
+    
+to_csv(clusters.loc['dot_x'].copy().sort_values('start_t')[
+        ['label', 'region', 'start_t', 'end_t', 'log10p']],
+       os.path.join(figdir, 'significant_clusters.csv'))
+
 
 #%% find those areas which have at least one significant cluster within time
 # period of interest
@@ -59,12 +68,13 @@ r_name = 'dot_x'
 twin = [300, 500]
 
 winclusters = clusters.loc[r_name]
-
-areas = winclusters[
+winclusters = winclusters[
          ((winclusters.start_t >= twin[0]) 
         & (winclusters.start_t <= twin[1])) 
         | ((winclusters.end_t >= twin[0]) 
-        & (winclusters.end_t <= twin[1]))].label.unique()
+        & (winclusters.end_t <= twin[1]))]
+
+areas = winclusters.label.unique()
 
 
 #%%
@@ -85,6 +95,24 @@ avsrcdf.loc[list(areas), :] = src_df.loc[
 
 times = avsrcdf.index.levels[1]
 
+avcsv = avsrcdf[avsrcdf.tval != 0].copy().xs(int(np.mean(twin)), level='time')
+avcsv['region'] = avcsv.index.map(ss.get_Glasser_section)
+to_csv(avcsv.reset_index()[
+        ['label', 'region', 'mlog10p', 'tval', 'mean', 'std']].sort_values(
+        'mlog10p', ascending=False),
+       os.path.join(figdir, 'average_significant_%d-%d.csv' % (
+               twin[0], twin[1])))
+
+
+#%% print areas with largest effects
+for hemi in ['L', 'R']:
+    ind = avsrcdf.index.get_level_values('label').map(
+            lambda x: x.startswith(hemi))
+    
+    print('\nhemi: ' + hemi)
+    print(avsrcdf[ind].abs().sort_values('tval', ascending=False).head(5))
+
+
 #%% 
 colorinfo = {'fmin': avsrcdf.loc[list(areas), show_measure].abs().min(),
              'fmid': avsrcdf.loc[list(areas), show_measure].abs().median(), 
@@ -98,8 +126,8 @@ colorinfo = {'fmin': avsrcdf.loc[list(areas), show_measure].abs().min(),
 filepat_base = 'av_brain_' + show_measure
 
 def brain_plot(brain):
-    views = {'rh': ['medial', {'azimuth': -20, 'elevation': 62, 'roll': -68}], 
-             'lh': ['parietal', 'medial']}
+    views = {'rh': ['medial', 'lateral'], #{'azimuth': -20, 'elevation': 62, 'roll': -68}], 
+             'lh': ['lateral', 'medial']}
     
     if type(brain) is str:
         hemi = brain
