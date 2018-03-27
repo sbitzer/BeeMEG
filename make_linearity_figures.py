@@ -35,10 +35,10 @@ times = samples.index.levels[1]
 #%% plot some results
 fig, axes = plt.subplots(2, 2, sharex=True, sharey='row', figsize=(7.5, 8))
 
-fliplabels = {True: 'flipped', False: 'original'}
+fliplabels = {True: 'response-signed', False: 'x-coordinate'}
 flipcols = {True: 'C0', False: 'C1'}
 
-varlabels = {'beta': r'population-level effect ($\beta$)', 
+varlabels = {'beta': r'linear model population-level effect ($\beta$)', 
              'loo': 'evidence for linear'}
 
 for var in varlabels.keys():
@@ -102,7 +102,7 @@ if resp_align and times[-1] >= 0:
     for row in axes:
         yl = row[0].get_ylim()
         for ax in row:
-            ax.plot([0, 0], yl, ':k', label='response', zorder=1)
+            ax.plot([0, 0], yl, ':k', label='time of response', zorder=1)
         row[0].set_ylim(yl);
 
 #axes[0, 0].set_ylim(-0.4, 0.4)
@@ -118,7 +118,7 @@ fig.savefig(os.path.join(helpers.figdir, figname), dpi=300)
 
 
 #%% check whether beta_lin or beta_step are larger across several time points
-tsplit = -200
+tsplit = -170
 tfirst = -2000
 tlast = 110
 
@@ -126,7 +126,7 @@ fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(5, 4))
 
 flipcols = {'original': 'C1', 'flipped': 'C0'}
 
-ylabel = 'original - flipped (posterior mean beta)'
+ylabel = 'x-coordinate - response-signed (posterior mean beta)'
 
 for label, ax in zip(labels, axes):
     subset = samples.loc[(label, slice(tfirst, tsplit), slice(None)),
@@ -138,7 +138,7 @@ for label, ax in zip(labels, axes):
                       keys=['early', 'late'], names=['period', 'time'])
     means.columns = means.columns.levels[0].map(lambda x: fliplabels[x])
     
-    diff = means.original - means.flipped
+    diff = means[fliplabels[False]] - means[fliplabels[True]]
     diff.name = ylabel
     
     print(label)
