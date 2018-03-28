@@ -191,15 +191,20 @@ def cnumfun(DM):
     # ensure that array is standard numpy array
     DM = np.array(DM)
     
-    # only include columns in which at least one value is different from 0
-    DM = DM[:, np.any(DM != 0, axis=0)]
-    
-    # ensure that regressor vectors have length 1
-    DM = DM / np.sqrt((DM ** 2).sum(axis=0))
-    
-    eig = np.linalg.eigvals(np.dot(DM.T, DM))
-    
-    return np.sqrt(eig.max() / max(0, eig.min()))
+    # if there are fewer cases than there are regressors, the design matrix
+    # cannot be full rank so that the condition number is infinity
+    if DM.shape[0] < DM.shape[1]:
+        return np.inf
+    else:
+        # only include columns in which at least one value is different from 0
+        DM = DM[:, np.any(DM != 0, axis=0)]
+        
+        # ensure that regressor vectors have length 1
+        DM = DM / np.sqrt((DM ** 2).sum(axis=0))
+        
+        eig = np.linalg.eigvals(np.dot(DM.T, DM))
+        
+        return np.sqrt(eig.max() / max(0, eig.min()))
 
 
 def compute_condition_number(DM, scope='full'):
