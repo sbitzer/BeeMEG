@@ -46,7 +46,7 @@ resp_align = True
 toolate = 5000
 
 if resp_align:
-    timeslice = [-700, delay]
+    timeslice = [-500, min(delay, 400)]
     fbase = 'response-aligned'
 else:
     timeslice = [delay, 1500]
@@ -61,11 +61,8 @@ fstore = os.path.join(
         helpers.resultsdir, 
         pd.datetime.now().strftime('source_linearity'+'_%Y%m%d%H%M'+'.h5'))
 
-r_colors = {'intercept': 'C0', 'dot_x_time': 'C1'}
-r_labels = {'dot_x_time': 'x-coord',
-            'intercept': 'intercept'}
-r_names = list(r_labels.keys())
-r_name = set(r_labels.keys()).difference({'intercept'}).pop()
+r_names = ['dot_x_time', 'intercept']
+r_name = set(r_names).difference({'intercept'}).pop()
 
 use_loodiff_mean = True
 
@@ -401,8 +398,8 @@ with pd.HDFStore(fstore, mode='a', complevel=7, complib='blosc') as store:
     
     
 #%% define function that returns data in the format that pystan wants
-def get_stan_data(x, y, normalise, choice_flip, choices):
-    if choice_flip:
+def get_stan_data(x, y, normalise, regressor, choices):
+    if regressor == 'choice':
         x *= np.sign(x) * np.sign(choices.loc[x.index])
         
     x_step = np.sign(x)
@@ -414,7 +411,7 @@ def get_stan_data(x, y, normalise, choice_flip, choices):
         x_step = x_step.groupby('subject').apply(normfun)
         y = y.groupby('subject').apply(normfun)
     
-    return {'x_lin': x.values, 'x_step': x_step.values,
+    return {'x_linear': x.values, 'x_step': x_step.values,
             'y': y.values,
             'S': y.index.get_level_values('subject').unique().size,
             'N': y.groupby('subject').count().values,
@@ -427,8 +424,8 @@ samples = pd.DataFrame([],
                 [labels, times, np.arange((nsamples - nsamples // 2) * nchains)], 
                 names=['label', 'time', 'sample']), 
         columns=pd.MultiIndex.from_product(
-                [[True, False], ['beta_lin', 'beta_step']], 
-                names=['choice_flip', 'variable']), dtype=np.float64)
+                [['choice', 'dotx'], ['beta_lin', 'beta_step']], 
+                names=['regressor', 'variable']), dtype=np.float64)
 samples.sort_index(axis=1, inplace=True)
 
 loodiffs = pd.DataFrame([], 
@@ -436,8 +433,9 @@ loodiffs = pd.DataFrame([],
                 [labels, times], 
                 names=['label', 'time']), 
         columns=pd.MultiIndex.from_product(
-                [[True, False], ['diff', 'se']], 
-                names=['choice_flip', 'measure']), dtype=np.float64)
+                [['choice', 'dotx', 'linear', 'step', 'ev_vs_resp'], 
+                 ['diff', 'se']], 
+                names=['model', 'measure']), dtype=np.float64)
 loodiffs.sort_index(axis=1, inplace=True)
 
 sample_diagnostics = pd.DataFrame([], 
@@ -445,8 +443,8 @@ sample_diagnostics = pd.DataFrame([],
                 [labels, times], 
                 names=['label', 'time']), 
         columns=pd.MultiIndex.from_product(
-                [[True, False], ['beta_lin', 'beta_step'], ['neff', 'Rhat']], 
-                names=['choice_flip', 'variable', 'measure']), 
+                [['choice', 'dotx'], ['beta_lin', 'beta_step'], ['neff', 'Rhat']], 
+                names=['regressor', 'variable', 'measure']), 
         dtype=np.float64)
 sample_diagnostics.sort_index(axis=1, inplace=True)
 
@@ -493,58 +491,69 @@ for label in labels:
         # only use subjects with more than 30 trials
         data = data.loc[subjects[trial_counts[-1] > 30]]
         
-        for choice_flip in [False, True]:
+        logliks = dict(choice_linear=None, choice_step=None,
+                       dotx_linear=None, dotx_step=None)
+        for regressor in ['dotx', 'choice']:
             standata = get_stan_data(data[r_name], data[label], normalise, 
-                                     choice_flip, choices)
+                                     regressor, choices)
             
             # inference for linear model
-            standata['x'] = standata['x_lin']
-            fit = sm.sampling(standata, iter=nsamples, chains=nchains)
-            samples_lin = fit.extract(['beta', 'log_lik'])
-            samples.loc[(label, time, slice(None)), 
-                        (choice_flip, 'beta_lin')] = samples_lin['beta']
+            for modelname in ['linear', 'step']:
+                standata['x'] = standata['x_' + modelname]
+                fit = sm.sampling(standata, iter=nsamples, chains=nchains)
+                
+                samples_tmp = fit.extract(['beta', 'log_lik'])
+                logliks[regressor + '_' + modelname] = samples_tmp['log_lik']
+                
+                varname = 'beta_lin' if modelname == 'linear' else 'beta_step'
+                samples.loc[(label, time, slice(None)), 
+                            (regressor, varname)] = samples_tmp['beta']
+                
+                summ = pystan.misc._summary_sim(fit.sim, ['beta'], [0.5])
+                sample_diagnostics.loc[
+                        (label, time), 
+                        (regressor, varname, 'neff')] = summ['ess']
+                sample_diagnostics.loc[
+                        (label, time), 
+                        (regressor, varname, 'Rhat')] = summ['rhat']
             
-            summ = pystan.misc._summary_sim(fit.sim, ['beta'], [0.5])
-            sample_diagnostics.loc[
-                    (label, time), 
-                    (choice_flip, 'beta_lin', 'neff')] = summ['ess']
-            sample_diagnostics.loc[
-                    (label, time), 
-                    (choice_flip, 'beta_lin', 'Rhat')] = summ['rhat']
+        # compare linear vs. step models (negative supports step)
+        for regressor in ['choice', 'dotx']:
+            diff, se = compute_loodiff(
+                    [logliks[regressor + '_linear'], 
+                     logliks[regressor + '_step']], use_mean=use_loodiff_mean)
             
-            # inference for step model
-            standata['x'] = standata['x_step']
-            fit = sm.sampling(standata, iter=nsamples, chains=nchains)
-            samples_step = fit.extract(['beta', 'log_lik'])
-            samples.loc[(label, time, slice(None)), 
-                        (choice_flip, 'beta_step')] = samples_step['beta']
+            loodiffs.loc[(label, time), (regressor, 'diff')] = diff
+            loodiffs.loc[(label, time), (regressor, 'se')] = se
             
-            summ = pystan.misc._summary_sim(fit.sim, ['beta'], [0.5])
-            sample_diagnostics.loc[
-                    (label, time), 
-                    (choice_flip, 'beta_step', 'neff')] = summ['ess']
-            sample_diagnostics.loc[
-                    (label, time), 
-                    (choice_flip, 'beta_step', 'Rhat')] = summ['rhat']
+        # compare choice vs. dotx regressors (negative supports choice)
+        for modelname in ['linear', 'step']:
+            diff, se = compute_loodiff(
+                    [logliks['dotx_' + modelname], 
+                     logliks['choice_' + modelname]], 
+                    use_mean=use_loodiff_mean)
             
-            # model comparison
-            diff, se = compute_loodiff([samples_lin['log_lik'], 
-                                        samples_step['log_lik']],
-                                       use_mean=use_loodiff_mean)
+            loodiffs.loc[(label, time), (modelname, 'diff')] = diff
+            loodiffs.loc[(label, time), (modelname, 'se')] = se
             
-            loodiffs.loc[(label, time), (choice_flip, 'diff')] = diff
-            loodiffs.loc[(label, time), (choice_flip, 'se')] = se
-                         
-            try:
-                # store in HDF-file, note that columns cannot be multi-index,
-                # when you want to append to a table, hence use tmp-file
-                with pd.HDFStore(fstore + '.tmp', mode='w', complib='blosc', 
-                                 complevel=7) as store:
-                    store['samples'] = samples
-                    store['loodiffs'] = loodiffs
-                    store['sample_diagnostics'] = sample_diagnostics
-            except:
-                warnings.warn("Couldn't store intermediate result, skipping.")
+        # compare linear dotx model (evidence) vs. step choice model (response)
+        diff, se = compute_loodiff(
+                [logliks['dotx_linear'], logliks['choice_step']], 
+                use_mean=use_loodiff_mean)
+        
+        loodiffs.loc[(label, time), ('ev_vs_resp', 'diff')] = diff
+        loodiffs.loc[(label, time), ('ev_vs_resp', 'se')] = se
+                     
+        try:
+            # store in HDF-file, note that columns cannot be multi-index,
+            # when you want to append to a table, hence use tmp-file
+            with pd.HDFStore(fstore + '.tmp', mode='w', complib='blosc', 
+                             complevel=7) as store:
+                store['samples'] = samples
+                store['loodiffs'] = loodiffs
+                store['sample_diagnostics'] = sample_diagnostics
+        except:
+            warnings.warn("Couldn't store intermediate result, skipping.")
 
 print('')
 
