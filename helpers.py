@@ -605,41 +605,68 @@ def glm_t(data, DM, selecti):
     return tvals
 
 
+def to_resp_aligned_index(tindex, rts, in_units='ms'):
+    """Transforms a first dot onset aligned time index to one aligned at response.
+    
+    tindex - MultiIndex with levels 'subject', 'trial' and 'time' where 'time'
+             is first dot onset aligned in ms with resolution of 10 ms and
+             there is the same number of times for each trial of each subject
+    rts - Series of response times in ms with index of 'subject' and 'trial'
+          with arbitrary resolution
+    """
+    if in_units == 's':
+        tfactor = 1000
+    else:
+        tfactor = 1
+        
+    rts = rts * tfactor
+    
+    # add small jitter to rts that are (almost) exact multiples of 5, because I
+    # will later compute round(t-rt, -1) and the round in numpy will then round
+    # to the nearest even decade, i.e., it will round both 15 and 25 to 20 
+    # which will make consecutive times in the tindex get the same time in the 
+    # new rtindex which I want to avoid
+    rem10 = np.mod(rts, 10)
+    rem5 = np.mod(rts, 5)
+    fives = (np.logical_not(np.isclose(rem10, 10) | np.isclose(rem10, 0)) 
+             & (np.isclose(rem5, 5) | np.isclose(rem5, 0)))
+    rts[fives] = rts[fives] - 1e-7
+    
+    subject = []
+    trial = []
+    time = []
+    for sub in tindex.get_level_values('subject').unique():
+        subind = tindex[slice(*tindex.slice_locs(sub, sub))]
+        
+        subject.append(np.full(subind.size, sub, dtype=int))
+        trials = subind.get_level_values('trial').unique()
+        
+        T = subind[slice(*subind.slice_locs(
+                (sub, trials[0]), (sub, trials[0])))].size
+        
+        trial.append(np.repeat(trials, T))
+        
+        time.append(
+                np.around(subind.get_level_values('time') * tfactor
+                          - np.repeat(rts.loc[(sub, list(trials))], T), 
+                          -1).astype(int))
+        
+    return pd.MultiIndex.from_arrays([
+            np.concatenate(subject), 
+            np.concatenate(trial),
+            np.concatenate(time)], names=('subject', 'trial', 'time'))
+    
+
 def load_area_tcs(srcfile, subjects, labels, resp_align=False, rts=None, 
-                  normalise=None):
+                  normalise=None, exclude_to=False):
+    
+    if resp_align:
+        exclude_to = True
     
     #% example data to get the times that are available
     with pd.HDFStore(srcfile, 'r') as store:
         epochs = store.select('label_tc', 'subject=2')
     epochtimes = epochs.index.levels[2]
-    
-    
-    #% define the function which reindexes time to response-aligned
-    if resp_align:
-        # if RTs are an exact multiple of 5, numpy will round both 10+5 and 20+5 to
-        # 20; so to not get duplicate times add a small jitter
-        fives = (np.mod(rts, 10) != 0) & (np.mod(rts, 5) == 0)
-        # subtracting the small amount means that the new times will be rounded
-        # down so that e.g., -5 becomes 0, I prefer that round because then there
-        # might be slightly more trials with larger times, but the effect is small
-        rts[fives] = rts[fives] - 1e-7
-        
-        def rtindex(sub):
-            """Returns index for data of a subject with time as difference to RT"""
-            
-            rttime = (  epochtimes.values[None, :] 
-                      - rts.loc[sub].values[:, None]).flatten()
-            # round to 10 ms and convert into integer
-            rttime = rttime.round(-1).astype(int)
-        
-            # create new subject-trial-time index (I cannot only set the labels of
-            # the time level, because the response aligned times have different 
-            # values than those stored in dot-onset aligned times)
-            return pd.MultiIndex.from_arrays(
-                    [np.tile(np.arange(1, 481)[:, None], 
-                             (1, epochtimes.size)).flatten(),
-                     rttime], names=['trial', 'time']).sort_values()
-    
     
     #% load data of all subjects
     def load_subject(sub):
@@ -647,15 +674,17 @@ def load_area_tcs(srcfile, subjects, labels, resp_align=False, rts=None,
         with pd.HDFStore(srcfile, 'r') as store:
             epochs = store.select('label_tc', 'subject=sub')[labels]
         
+        if exclude_to:
+            epochs = epochs.loc[
+                    (sub, rts.loc[sub][rts.loc[sub] != toresponse[1] * 1000]
+                     .index.values, slice(None))]
+        
         if resp_align:
             # get response-aligned times of data points
-            epochs.index = rtindex(sub)
-            
-            # exclude trials which were timed out (were coded as RT=5000 ms)
-            epochs = epochs.loc[(rts.loc[sub][rts.loc[sub] <= 2500].index.values, 
-                                 slice(None))]
-        else:
-            epochs = epochs.loc[sub]
+            epochs.index = to_resp_aligned_index(epochs.index, rts)
+        
+        # to drop the subject level
+        epochs = epochs.loc[sub]
             
         gc.collect()
         

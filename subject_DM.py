@@ -10,15 +10,20 @@ import numpy as np
 import pandas as pd
 import regressors
 import seaborn as sns
+import helpers
 
 
 #%% 
 def get_trial_time_DM(r_names, trt, subjects=None, delay=0, 
-                      unobserved_val=np.nan, normalise=False):
+                      unobserved_val=np.nan, normalise=False, exclude_to=False,
+                      resp_align=False):
     if np.isscalar(delay):
         delay = {r_name: delay for r_name in r_names}
     
     assert set(r_names) == delay.keys()
+    
+    if resp_align:
+        exclude_to = True
     
     # collect all regressors
     DM = []
@@ -40,6 +45,24 @@ def get_trial_time_DM(r_names, trt, subjects=None, delay=0,
         
     if add_intercept:
         DM['intercept'] = 1
+    
+    if exclude_to or resp_align:
+        rts = regressors.subject_trial.RT.loc[subjects]
+        
+    if exclude_to:
+        # exclude trials in which there was no response (timed out trials)
+        def get_response_trials(sub):
+            DMsub = DM.loc[sub]
+            rtssub = rts.loc[sub]
+            return DMsub.loc[
+                    (rtssub[rtssub != helpers.toresponse[1]].index, 
+                     slice(None)), :]
+        
+        DM = pd.concat([get_response_trials(sub) for sub in subjects],
+                        keys=subjects, names=['subject', 'trial', 'time'])
+        
+    if resp_align:
+        DM.index = helpers.to_resp_aligned_index(DM.index, rts, in_units='s')
         
     return normalise_DM(DM, normalise)
 

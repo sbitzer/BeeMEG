@@ -37,7 +37,12 @@ labels = ['L_%s_ROI-lh' % area, 'R_%s_ROI-rh' % area]
 
 delay = 400
 
+# whether to do response aligned analysis
 resp_align = True
+
+# whether to exclude trials that were timed out (resp_align=True overwrites
+# this setting with exclude_to=True)
+exclude_to = True
 
 # allows you to exclude trials based on response-aligned time in first dot 
 # onset aligned analysis: all trials with response-aligned time >= toolate will
@@ -87,34 +92,18 @@ choices = regressors.subject_trial.response.loc[subjects]
 rts = regressors.subject_trial.RT.loc[subjects] * 1000
 
 alldata, epochtimes = helpers.load_area_tcs(
-        srcfile, subjects, labels, resp_align, rts, normalise)
+        srcfile, subjects, labels, resp_align, rts, normalise, exclude_to)
 
 
 #%% load regressor time course
 DM = subject_DM.get_trial_time_DM([r_name], epochtimes.values / 1000, 
-                                  delay=delay / 1000, subjects=subjects)
+                                  delay=delay / 1000, subjects=subjects,
+                                  exclude_to=exclude_to, resp_align=resp_align)
 
 DM.sort_index(axis=1, inplace=True)
 
 if normalise == 'global':
     DM = subject_DM.normalise_DM(DM, True)
-
-if resp_align:
-    # exclude trials in which there was no response (timed out trials)
-    def get_response_trials(sub):
-        DMsub = DM.loc[sub]
-        rtssub = rts.loc[sub]
-        return DMsub.loc[(rtssub[rtssub != helpers.toresponse[1] * 1000].index, 
-                          slice(None)), :]
-    
-    DM = pd.concat([get_response_trials(sub) for sub in subjects],
-                    keys=subjects, names=['subject', 'trial', 'time'])
-    
-# now data and regressor are in the same order, so simply assign the 
-# response-aligned index of alldata to the regressor values to get 
-# response-aligned regressor values, if not response-aligned this transforms
-# the time index from seconds to milliseconds
-DM.index = alldata.index
 
 
 #%% define and pre-compile the Stan model
