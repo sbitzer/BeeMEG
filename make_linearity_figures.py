@@ -288,7 +288,7 @@ if resp_align and plottimes[-1] >= 0:
         ax.plot([0, 0], yl, ':k', label='time of response', zorder=1)
 
 axes[0].text(plottimes[0], 0.002, 'supports evidence', color=evidcol, fontsize=14)
-axes[0].text(plottimes[0], -0.004, 'supports response', color=respcol, fontsize=14)
+axes[0].text(plottimes[0], -0.004, 'supports choice', color=respcol, fontsize=14)
 
 # box plot for early and late time points
 diff = loodiffs.loc[(slice(None), slice(plottimes[0], tsplit-1)), 
