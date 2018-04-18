@@ -83,7 +83,7 @@ linecol = '#4c72b0'
 # add absmean curves
 values = second_level.xs(0)[('mean', 'dot_x')].abs().mean(level='time')
 datal, = xav_ax.plot(values.index, values.values, color=linecol, lw=2)
-xav_ax.set_title('x-coordinate', fontdict={'fontsize': 12})
+xav_ax.set_title('evidence', fontdict={'fontsize': 12})
 xav_ax.set_xlabel('time from dot onset (ms)')
 xav_ax.set_ylabel('average absolute beta')
 
@@ -395,7 +395,7 @@ sl['significant'] = sl.mlog10p > -np.log10(0.01)
 #   average effect
 fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
 
-rlabels = dict(dot_x='x-coordinate', dot_y='y-coordinate')
+rlabels = dict(dot_x='evidence', dot_y='y-coordinate')
 
 for r_name, ax in zip(r_names, axes):
     label = labels[r_name]

@@ -67,7 +67,7 @@ evoked.data[:, 0] = avabst.values
 
 fig = evoked.plot_topomap(times=[0], vmin=avabst.min(), vmax=avabst.max(),
                           scalings={'mag': 1}, units='t', time_format='',
-                          title='x-coordinate\n(average magnitude)',
+                          title='evidence\n(average magnitude)',
                           mask=np.tile((avabst.index == maxlabel)[:, None], 
                                        (1, evoked.data.shape[1])),
                           mask_params={'markersize': 10});
@@ -85,7 +85,7 @@ label = maxlabel
 #label = 'L_4_ROI-lh'
 
 fig, axes = plt.subplots(R, 1, sharex=True, sharey=True, figsize=[6, 8])
-axes[0].set_title('x-coordinate (%s)' % label)
+axes[0].set_title('evidence (%s)' % label)
 
 times = second_level.index.levels[2]
 for r, reg in enumerate(regs):
@@ -108,7 +108,8 @@ for ax, reg in zip(axes, regs):
                       zorder=1, label='dot onset')
 axes[0].set_ylim(yl)
 
-axes[-1].legend([line, pl, onsetl], ['data', 'permuted', 'dot onset'])
+axes[-1].legend([line, pl, onsetl], ['data', 'permuted', 'dot onset'],
+                loc='upper left')
 axes[-1].set_xlabel('time (ms)')
 
 fig.tight_layout()

@@ -64,7 +64,7 @@ fig, axes = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(7.5, 3.5))
 medianRT = regressors.subject_trial.loc[subjects, 'RT'].groupby(
         'subject').median().mean()
 
-for coord, ax in zip(['x', 'y'], axes):
+for title, coord, ax in zip(['evidence', 'y-coordinate'], ['x', 'y'], axes):
     r_names = ['dot_'+coord, 'sum_dot_'+coord, 'response']
     coord = coord + '-coordinate'
     DM = subject_DM.get_trial_DM(dots, subjects, r_names)
@@ -82,14 +82,14 @@ for coord, ax in zip(['x', 'y'], axes):
         return correlations
     
     correlations = pd.concat([get_corrs(name) for name in r_names[:2]],
-                             keys=['single dot', 'accumulated'], 
+                             keys=['momentary', 'accumulated'], 
                              names=[coord, 'dot'], axis=1)
     correlations = correlations.stack().stack().reset_index()
     
     sns.stripplot('dot', 0, coord, data=correlations, jitter=True, 
                   dodge=True, ax=ax)
     
-    ax.set_title(coord)
+    ax.set_title(title)
 
 for ax in axes:
     # the first dot is shown at x-value 0 and the next dot at x=1, the x-axis
@@ -130,10 +130,10 @@ dotcorrs = pd.DataFrame(
 corrim = ax.imshow(dotcorrs, 'PiYG', vmin=-1, vmax=1, aspect='equal')
 ax.set_xticks(np.arange(D)); 
 ax.set_xticklabels(dots)
-ax.set_xlabel('sum of x-coordinates up to dot ...')
+ax.set_xlabel('accumulated evidence up to dot ...')
 ax.set_yticks(np.arange(D)); 
 ax.set_yticklabels(dots)
-ax.set_ylabel('x-coordinate for dot ...')
+ax.set_ylabel('momentary evidence for dot ...')
 cbar = fig.colorbar(corrim, ax=ax)
 cbar.set_label('correlation')
 
@@ -147,7 +147,7 @@ choicecorrs = pd.DataFrame(
 sns.boxplot(data=choicecorrs, ax=ax, color='C0')
 lbox = mlines.Line2D([], [], color='C0', lw=3, label='choice')
 
-l1, = ax.plot(np.diag(dotcorrs), color='C2', label='x-coord', lw=3, zorder=9)
+l1, = ax.plot(np.diag(dotcorrs), color='C2', label='mom. ev.', lw=3, zorder=9)
 
 corrcorrs = pd.Series(
         np.corrcoef(sum_x.unstack('trial'), correct)[-1, :-1],
@@ -155,7 +155,11 @@ corrcorrs = pd.Series(
 l2, = ax.plot(corrcorrs.values, color='C1', label='correct', lw=3, zorder=10)
 
 ax.legend(handles=[lbox, l1, l2])
-ax.set_xlabel('sum of x-coordinates up to dot ...')
+ax.set_xlabel('accumulated evidence up to dot ...')
 
 fig.tight_layout()
+
+fig.text(0.015, 0.92, 'A', weight='bold', fontsize=20)
+fig.text(0.5, 0.92, 'B', weight='bold', fontsize=20)
+
 fig.savefig(os.path.join(figdir, 'x-sumx-correlation.png'), dpi=300)

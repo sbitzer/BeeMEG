@@ -69,7 +69,7 @@ r_colors = {'intercept': 'C0', 'dot_x_time': 'C1', 'dot_y_time': 'C2',
             'percupt_x_time': 'C3', 'percupt_y_time': 'C4'}
 r_labels = {'percupt_y_time': 'PU-y', 
             'percupt_x_time': 'PU-x',
-            'dot_x_time': 'x-coord',
+            'dot_x_time': 'evidence',
             'dot_y_time': 'y-coord',
             'intercept': 'intercept'}
 
