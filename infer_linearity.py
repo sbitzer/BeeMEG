@@ -389,7 +389,7 @@ with pd.HDFStore(fstore, mode='a', complevel=7, complib='blosc') as store:
 #%% define function that returns data in the format that pystan wants
 def get_stan_data(x, y, normalise, regressor, choices):
     if regressor == 'choice':
-        x *= np.sign(x) * np.sign(choices.loc[x.index])
+        x = x * np.sign(x) * np.sign(choices.loc[x.index])
         
     x_step = np.sign(x)
     
