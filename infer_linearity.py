@@ -35,7 +35,7 @@ normalise = 'local'
 
 labels = ['L_%s_ROI-lh' % area, 'R_%s_ROI-rh' % area]
 
-delay = 400
+delays = [330, 370, 400, 430, 470]
 
 # whether to do response aligned analysis
 resp_align = True
@@ -51,17 +51,17 @@ exclude_to = True
 toolate = 5000
 
 if resp_align:
-    timeslice = [-500, min(delay, 400)]
+    timeslice = [-350, min(min(delays), -350)]
     fbase = 'response-aligned'
 else:
-    timeslice = [delay, 1500]
+    timeslice = [max(delays), 1500]
     fbase = 'firstdot-aligned'
 
 times = pd.Index(np.arange(timeslice[0], timeslice[1]+10, step=10), 
                  name='time')
 
-fbase = 'linearity_%s_%s_norm%s_delay%3d_toolate%+05d' % (
-            fbase, area, normalise, delay, toolate)
+fbase = 'linearity_%s_%s_norm%s_toolate%+05d' % (
+            fbase, area, normalise, toolate)
 fstore = os.path.join(
         helpers.resultsdir, 
         pd.datetime.now().strftime('source_linearity'+'_%Y%m%d%H%M'+'.h5'))
@@ -71,14 +71,27 @@ r_name = set(r_names).difference({'intercept'}).pop()
 
 use_loodiff_mean = True
 
+# number of total samples per chain, the first half of samples will be excluded
+# as warmup
 nsamples = 1000
-nchains = 4
+
+# whether to skip the mixed models (dotx_step and choice_linear)
+skip_mix = True
+
+# how many different chains to run, give a single number if Stan should run the
+# chains in parallel itself, give a list or array, if chains should be run in
+# sequence outside of Stan (to prevent memory problems)
+nchains = np.ones(4)
+nchains = np.array(nchains, dtype=int)
 
 with pd.HDFStore(fstore, mode='w', complevel=7, complib='blosc') as store:
     store['scalar_params'] = pd.Series(
-            [delay, resp_align, toolate, nsamples, nchains, use_loodiff_mean], 
-            ['delay', 'resp_align', 'toolate', 'nsamples', 'nchains',
-             'use_loodiff_mean'])
+            [resp_align, toolate, nsamples, nchains, use_loodiff_mean, 
+             exclude_to], 
+            ['resp_align', 'toolate', 'nsamples', 'nchains',
+             'use_loodiff_mean', 'exclude_to'])
+    store['nchains'] = pd.Series(nchains)
+    store['delays'] = pd.Series(delays)
     store['r_name'] = pd.Series(r_name)
     store['srcfile'] = pd.Series(srcfile)
     store['normalise'] = pd.Series(normalise)
@@ -96,14 +109,24 @@ alldata, epochtimes = helpers.load_area_tcs(
 
 
 #%% load regressor time course
-DM = subject_DM.get_trial_time_DM([r_name], epochtimes.values / 1000, 
-                                  delay=delay / 1000, subjects=subjects,
-                                  exclude_to=exclude_to, resp_align=resp_align)
+DM = pd.concat(
+        [subject_DM.get_trial_time_DM(
+                [r_name], epochtimes.values / 1000, delay=delay / 1000, 
+                subjects=subjects, exclude_to=exclude_to, 
+                resp_align=resp_align)
+         for delay in delays], 
+        keys=delays, names=['delay', 'subject', 'trial', 'time'])
 
 DM.sort_index(axis=1, inplace=True)
 
 if normalise == 'global':
     DM = subject_DM.normalise_DM(DM, True)
+
+# remove timed out trials from rts, if they were also removed from the data and
+# DM; this is necessary, because rts are later used to index trials in the 
+# data that are too late
+if exclude_to:
+    rts = rts[rts != helpers.toresponse[1] * 1000]
 
 
 #%% define and pre-compile the Stan model
@@ -389,7 +412,9 @@ with pd.HDFStore(fstore, mode='a', complevel=7, complib='blosc') as store:
 #%% define function that returns data in the format that pystan wants
 def get_stan_data(x, y, normalise, regressor, choices):
     if regressor == 'choice':
-        x = x * np.sign(x) * np.sign(choices.loc[x.index])
+        choicesigns = np.sign(choices.loc[x.index.droplevel('delay')])
+        choicesigns.index = x.index
+        x = x.abs() * choicesigns
         
     x_step = np.sign(x)
     
@@ -408,9 +433,10 @@ def get_stan_data(x, y, normalise, regressor, choices):
     
 
 #%% initialise output DataFrames
+S = nsamples - nsamples // 2
 samples = pd.DataFrame([], 
         index=pd.MultiIndex.from_product(
-                [labels, times, np.arange((nsamples - nsamples // 2) * nchains)], 
+                [labels, times, np.arange(S * nchains.sum(), dtype=int)], 
                 names=['label', 'time', 'sample']), 
         columns=pd.MultiIndex.from_product(
                 [['choice', 'dotx'], ['beta_lin', 'beta_step']], 
@@ -465,8 +491,12 @@ for label in labels:
     for time in times:
         print('\rlabel %s, time = % 5d' % (label, time), end='', flush=True)
         
-        data = pd.concat([DM.xs(time, level='time'), 
-                          alldata.xs(time, level='time')[label]], axis=1)
+        DMt = DM.xs(time, level='time')
+        DMt = DMt.reorder_levels(['subject', 'trial', 'delay'])
+        data = pd.DataFrame(
+                np.c_[DMt.values, 
+                      np.tile(alldata.xs(time, level='time')[label], len(delays))], 
+                index=DMt.index, columns=[r_name, label])
         
         # remove trials which are > toolate to response
         if not resp_align:
@@ -486,44 +516,62 @@ for label in labels:
             standata = get_stan_data(data[r_name], data[label], normalise, 
                                      regressor, choices)
             
-            # inference for linear model
+            # inference for models
             for modelname in ['linear', 'step']:
-                standata['x'] = standata['x_' + modelname]
-                fit = sm.sampling(standata, iter=nsamples, chains=nchains)
-                
-                samples_tmp = fit.extract(['beta', 'log_lik'])
-                logliks[regressor + '_' + modelname] = samples_tmp['log_lik']
+                llname = regressor + '_' + modelname
+                if skip_mix and llname in ['dotx_step', 'choice_linear']:
+                    continue
                 
                 varname = 'beta_lin' if modelname == 'linear' else 'beta_step'
-                samples.loc[(label, time, slice(None)), 
-                            (regressor, varname)] = samples_tmp['beta']
                 
-                summ = pystan.misc._summary_sim(fit.sim, ['beta'], [0.5])
-                sample_diagnostics.loc[
-                        (label, time), 
-                        (regressor, varname, 'neff')] = summ['ess']
-                sample_diagnostics.loc[
-                        (label, time), 
-                        (regressor, varname, 'Rhat')] = summ['rhat']
-            
-        # compare linear vs. step models (negative supports step)
-        for regressor in ['choice', 'dotx']:
-            diff, se = compute_loodiff(
-                    [logliks[regressor + '_linear'], 
-                     logliks[regressor + '_step']], use_mean=use_loodiff_mean)
-            
-            loodiffs.loc[(label, time), (regressor, 'diff')] = diff
-            loodiffs.loc[(label, time), (regressor, 'se')] = se
-            
-        # compare choice vs. dotx regressors (negative supports choice)
-        for modelname in ['linear', 'step']:
-            diff, se = compute_loodiff(
-                    [logliks['dotx_' + modelname], 
-                     logliks['choice_' + modelname]], 
-                    use_mean=use_loodiff_mean)
-            
-            loodiffs.loc[(label, time), (modelname, 'diff')] = diff
-            loodiffs.loc[(label, time), (modelname, 'se')] = se
+                standata['x'] = standata['x_' + modelname]
+                
+                for c, nchain in enumerate(nchains):
+                    fit = sm.sampling(standata, iter=nsamples, chains=nchain)
+                
+                    samples_tmp = fit.extract(['beta', 'log_lik'])
+                    
+                    samples.loc[
+                            (label, time, slice(c * S * nchain, 
+                                                (c + 1) * S * nchain - 1)), 
+                            (regressor, varname)] = samples_tmp['beta']
+                    
+                    if c == 0:
+                        logliks[llname] = samples_tmp['log_lik']
+                    else:
+                        logliks[llname] = np.r_[
+                                logliks[llname], 
+                                samples_tmp['log_lik']]
+                
+                if nchains.size == 1:
+                    summ = pystan.misc._summary_sim(fit.sim, ['beta'], [0.5])
+                    sample_diagnostics.loc[
+                            (label, time), 
+                            (regressor, varname, 'neff')] = summ['ess']
+                    sample_diagnostics.loc[
+                            (label, time), 
+                            (regressor, varname, 'Rhat')] = summ['rhat']
+        
+        if not skip_mix:
+            # compare linear vs. step models (negative supports step)
+            for regressor in ['choice', 'dotx']:
+                diff, se = compute_loodiff(
+                        [logliks[regressor + '_linear'], 
+                         logliks[regressor + '_step']], 
+                        use_mean=use_loodiff_mean)
+                
+                loodiffs.loc[(label, time), (regressor, 'diff')] = diff
+                loodiffs.loc[(label, time), (regressor, 'se')] = se
+                
+            # compare choice vs. dotx regressors (negative supports choice)
+            for modelname in ['linear', 'step']:
+                diff, se = compute_loodiff(
+                        [logliks['dotx_' + modelname], 
+                         logliks['choice_' + modelname]], 
+                        use_mean=use_loodiff_mean)
+                
+                loodiffs.loc[(label, time), (modelname, 'diff')] = diff
+                loodiffs.loc[(label, time), (modelname, 'se')] = se
             
         # compare linear dotx model (evidence) vs. step choice model (response)
         diff, se = compute_loodiff(
