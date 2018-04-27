@@ -231,7 +231,7 @@ fig = plt.figure(figsize=(8, 4))
 grid = GridSpec(1, 2, left=0.05, bottom=0.15, right=0.7, top=0.9)
 bp_grid = GridSpec(1, 1, left=0.75, bottom=0.15, right=0.95, top=0.9)
 axes = plt.subplot(grid[0, 0])
-axes = [axes, plt.subplot(grid[0, 1], sharex=axes, sharey=axes),
+axes = [axes, plt.subplot(grid[0, 1], sharex=axes),
         plt.subplot(bp_grid[0, 0])]
 
 endt = 0
