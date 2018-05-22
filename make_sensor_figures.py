@@ -83,9 +83,9 @@ linecol = '#4c72b0'
 # add absmean curves
 values = second_level.xs(0)[('mean', 'dot_x')].abs().mean(level='time')
 datal, = xav_ax.plot(values.index, values.values, color=linecol, lw=2)
-xav_ax.set_title('evidence', fontdict={'fontsize': 12})
+xav_ax.set_title('evidence: x-coordinate', fontdict={'fontsize': 12})
 xav_ax.set_xlabel('time from dot onset (ms)')
-xav_ax.set_ylabel('average absolute beta')
+xav_ax.set_ylabel(r'mean magnitude of grand average $\beta$')
 
 markers, = xav_ax.plot(x_times, values.loc[x_times], '.k', ms=10)
 
@@ -95,7 +95,7 @@ for perm in range(1, nperm+1):
 
 values = second_level.xs(0)[('mean', 'dot_y')].abs().mean(level='time')
 yav_ax.plot(values.index, values.values, color=linecol, lw=2)
-yav_ax.set_title('y-coordinate', fontdict={'fontsize': 12})
+yav_ax.set_title('control: y-coordinate', fontdict={'fontsize': 12})
 yav_ax.set_xlabel('time from dot onset (ms)')
 
 yav_ax.plot(y_times, values.loc[y_times], '.k', ms=10)
@@ -155,6 +155,9 @@ for i, ax in enumerate(yt_axes):
                     which='original')
     ax.set_title(ax.get_title(), fontdict={'fontsize': 10})
     
+    
+fig.text(0.02, 0.95, 'A', weight='bold', fontsize=18)
+fig.text(0.51, 0.95, 'B', weight='bold', fontsize=18)
     
 # export
 fig.savefig(os.path.join(figdir, 'sensorspace_absmean.png'),

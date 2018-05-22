@@ -64,7 +64,7 @@ fig, axes = plt.subplots(1, 2, sharey=True, sharex=True, figsize=(7.5, 3.5))
 medianRT = regressors.subject_trial.loc[subjects, 'RT'].groupby(
         'subject').median().mean()
 
-for title, coord, ax in zip(['evidence', 'y-coordinate'], ['x', 'y'], axes):
+for title, coord, ax in zip(['evidence: x-coordinate', 'control: y-coordinate'], ['x', 'y'], axes):
     r_names = ['dot_'+coord, 'sum_dot_'+coord, 'response']
     coord = coord + '-coordinate'
     DM = subject_DM.get_trial_DM(dots, subjects, r_names)
@@ -104,6 +104,9 @@ axes[1].set_ylabel('');
 axes[1].legend()
 
 fig.subplots_adjust(top=0.9, bottom=0.15, left=0.09, right=0.97, wspace=0.07)
+
+fig.text(0.02, 0.93, 'A', weight='bold', fontsize=18)
+fig.text(0.53, 0.93, 'B', weight='bold', fontsize=18)
 
 fig.savefig(os.path.join(figdir, 'choice_correlations.png'),
             dpi=300)

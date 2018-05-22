@@ -107,6 +107,8 @@ r_name = 'dot_x_time'
 show_names = ['dot_y_time']
 show_names.append(r_name)
 
+leftright = dict(L='left', R='right')
+
 fig, axes = plt.subplots(1, len(labels), sharey=True, figsize=(7.5, 4))
 
 for label, ax in zip(labels, axes):
@@ -136,7 +138,8 @@ for label, ax in zip(labels, axes):
             color=lines[r_name].get_color())
     ax.plot(ti[[0, -1]], [0, 0], '--k', zorder=1)
     
-    ax.set_title(label[0] + '-' + area)
+    title = 'primary motor cortex' if area == '4' else area
+    ax.set_title(leftright[label[0]] + ' ' + title)
     if resp_align:
         ax.set_xlabel('time from response (ms)')
     else:
@@ -150,7 +153,7 @@ if resp_align:
 
 ax.legend()
 
-axes[0].set_ylabel('estimated second-level beta')
+axes[0].set_ylabel(r'estimated second-level $\beta$')
 
 fig.tight_layout()
 fig.savefig(os.path.join(helpers.figdir, 
