@@ -82,7 +82,7 @@ skip_mix = True
 # chains in parallel itself, give a list or array, if chains should be run in
 # sequence outside of Stan (to prevent memory problems)
 nchains = np.ones(4)
-nchains = np.array(nchains, dtype=int)
+nchains = np.atleast_1d(nchains).astype(int)
 
 with pd.HDFStore(fstore, mode='w', complevel=7, complib='blosc') as store:
     store['scalar_params'] = pd.Series(
