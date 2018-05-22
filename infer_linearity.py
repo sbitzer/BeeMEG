@@ -412,7 +412,7 @@ with pd.HDFStore(fstore, mode='a', complevel=7, complib='blosc') as store:
 #%% define function that returns data in the format that pystan wants
 def get_stan_data(x, y, normalise, regressor, choices):
     if regressor == 'choice':
-        choicesigns = np.sign(choices.loc[x.index.droplevel('delay')])
+        choicesigns = np.sign(choices.loc[x.index])
         choicesigns.index = x.index
         x = x.abs() * choicesigns
         
@@ -497,6 +497,8 @@ for label in labels:
                 np.c_[DMt.values, 
                       np.tile(alldata.xs(time, level='time')[label], len(delays))], 
                 index=DMt.index, columns=[r_name, label])
+        
+        data.index = data.index.droplevel('delay')
         
         # remove trials which are > toolate to response
         if not resp_align:
