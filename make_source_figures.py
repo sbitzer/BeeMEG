@@ -68,8 +68,10 @@ first_level = pd.read_hdf(os.path.join(helpers.resultsdir, basefile),
 
 
 #%% helper plotting function
-def plot_single_source_signal(r_name, label, ax, t_off=0):
-    dat = first_level.loc[(0, label, slice(None)), 
+def plot_single_source_signal(r_name, label, ax, t_off=0, t_slice=None):
+    if t_slice is None:
+        t_slice = slice(None)
+    dat = first_level.loc[(0, label, t_slice), 
                       (slice(None), 'beta', r_name)]
     times = dat.index.get_level_values('time') + t_off
     
@@ -77,12 +79,12 @@ def plot_single_source_signal(r_name, label, ax, t_off=0):
     
     if measure == 'mu_mean':
         # get mean beta of folded normal mixture
-        dat_mu = second_level.loc[(label, slice(None)), ('mu_mean', r_name)]
-        dat_theta = second_level.loc[(label, slice(None)), ('theta_mean', r_name)]
+        dat_mu = second_level.loc[(label, t_slice), ('mu_mean', r_name)]
+        dat_theta = second_level.loc[(label, t_slice), ('theta_mean', r_name)]
         
         mean_beta = dat_theta * dat_mu - (1 - dat_theta) * dat_mu
     else:
-        mean_beta = second_level.loc[(label, slice(None)), (measure, r_name)]
+        mean_beta = second_level.loc[(label, t_slice), (measure, r_name)]
     
     l1, = ax.plot(times, mean_beta, 'k', lw=2, label='mean')
     
@@ -167,7 +169,7 @@ for ax, reg in zip(axes, ['mom', 'acc', 'abs', 'perc']):
     ax.set_xlabel('time (ms)')
     ax.set_title(regs[reg]['name'])
 
-axes[0].set_ylabel('mean absolute regression coefficient')
+axes[0].set_ylabel(r'mean magnitude of second-level $\beta$')
 
 fig.tight_layout()
 
@@ -175,11 +177,13 @@ fig.savefig(os.path.join(helpers.figdir, 'av_source_timecourses.png'), dpi=300)
 
 
 #%% get tidy data of areas with largest effects for two regressors
+timeslice = slice(0, 500)
+
 r_names = ['dot_x', 'dot_y']
-labels = pd.Series([second_level.loc[:, (measure, r_name)].abs().mean(
+labels = pd.Series([second_level.loc[(slice(None), timeslice), (measure, r_name)].abs().mean(
         level='label').idxmax() for r_name in r_names], r_names)
 
-sl = second_level.loc[labels, ([measure, 'mlog10p'], r_names)].stack(
+sl = second_level.loc[(labels, timeslice), ([measure, 'mlog10p'], r_names)].stack(
         'regressor')
 
 # get rid of the data that I don't want to show and shouldn't influence
@@ -206,13 +210,13 @@ rlabels = dict(dot_x='evidence', dot_y='y-coordinate')
 for r_name, ax in zip(r_names, axes):
     label = labels[r_name]
     
-    l, l1 = plot_single_source_signal(r_name, label, ax);
+    l, l1 = plot_single_source_signal(r_name, label, ax, t_slice=timeslice);
     
-    sig = sl.loc[(label, slice(None), r_name), 'significant']
+    sig = sl.loc[(label, timeslice, r_name), 'significant']
     sig = sig.index.get_level_values('time')[sig]
     l2, = ax.plot(sig, 0.13 * np.ones_like(sig), '.', color='#8E3A59')
     
-    xl = sl.index.get_level_values('time').unique()[[0, -1]]
+    xl = sl.loc[(label, timeslice, r_name)].index.get_level_values('time').unique()[[0, -1]]
     ax.plot(xl, np.r_[0, 0], ':k')
     
     ax.set_xlabel('time from dot onset (ms)')
@@ -221,9 +225,13 @@ for r_name, ax in zip(r_names, axes):
 ax.legend([l, l1, l2], ['participants', 'estimated mean', 'p < 0.01'], 
           loc='lower right');
 
-axes[0].set_ylabel('regression coefficients')
+axes[0].set_ylabel(r'$\beta$')
           
 fig.tight_layout()
+
+fig.text(0.09, 0.91, 'A', weight='bold', fontsize=18)
+fig.text(0.545, 0.91, 'B', weight='bold', fontsize=18)
+
 fig.savefig(os.path.join(figdir, 'example_area_tcs.png'), 
             dpi=300)
 
