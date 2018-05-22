@@ -506,8 +506,12 @@ for label in labels:
         
         data = data.dropna()
         
-        # count remaining trials
-        trial_counts.append(data[label].groupby('subject').count())
+        # count remaining trials, ensure that subjects without any data have
+        # 0 count
+        trcnts = data[label].groupby('subject').count()
+        ind = pd.Index(subjects).difference(trcnts.index)
+        trcnts = pd.concat([trcnts, pd.Series(np.zeros(ind.size), index=ind)])
+        trial_counts.append(trcnts.sort_index())
         
         # only use subjects with more than 30 trials
         data = data.loc[subjects[trial_counts[-1] > 30]]
