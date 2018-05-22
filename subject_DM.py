@@ -63,6 +63,11 @@ def get_trial_time_DM(r_names, trt, subjects=None, delay=0,
         
     if resp_align:
         DM.index = helpers.to_resp_aligned_index(DM.index, rts, in_units='s')
+    else:
+        # transform floating number (seconds) time index into integer (ms) index
+        DM = DM.reset_index('time')
+        DM.time = DM.time.map(lambda t: int(t * 1000))
+        DM.set_index('time', append=True, inplace=True)
         
     return normalise_DM(DM, normalise)
 
