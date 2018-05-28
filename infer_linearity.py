@@ -441,6 +441,7 @@ samples = pd.DataFrame([],
         columns=pd.MultiIndex.from_product(
                 [['choice', 'dotx'], ['beta_lin', 'beta_step']], 
                 names=['regressor', 'variable']), dtype=np.float64)
+samples.sort_index(axis=0, inplace=True)
 samples.sort_index(axis=1, inplace=True)
 
 loodiffs = pd.DataFrame([], 
@@ -451,6 +452,7 @@ loodiffs = pd.DataFrame([],
                 [['choice', 'dotx', 'linear', 'step', 'ev_vs_resp'], 
                  ['diff', 'se']], 
                 names=['model', 'measure']), dtype=np.float64)
+loodiffs.sort_index(axis=0, inplace=True)
 loodiffs.sort_index(axis=1, inplace=True)
 
 sample_diagnostics = pd.DataFrame([], 
@@ -461,6 +463,7 @@ sample_diagnostics = pd.DataFrame([],
                 [['choice', 'dotx'], ['beta_lin', 'beta_step'], ['neff', 'Rhat']], 
                 names=['regressor', 'variable', 'measure']), 
         dtype=np.float64)
+sample_diagnostics.sort_index(axis=0, inplace=True)
 sample_diagnostics.sort_index(axis=1, inplace=True)
 
 
