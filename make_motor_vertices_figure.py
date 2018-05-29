@@ -31,9 +31,9 @@ for ax in axes:
     ax.set_axis_off()
     
 fig.text(0.25, 0.93, "response-aligned grand average", ha='center', 
-         fontsize=20)
-fig.text(0.75, 0.93, r"dot onset aligned evidence $\beta$", ha='center', 
-         fontsize=20)
+         fontsize=16)
+fig.text(0.75, 0.93, r"dot onset aligned evidence correlation", 
+         ha='center', fontsize=16)
 
 fig.savefig(os.path.join(helpers.figdir, 
                          'motor_vertices_comparison_%s.png' % hemi))
