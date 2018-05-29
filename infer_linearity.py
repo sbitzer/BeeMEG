@@ -33,12 +33,12 @@ area = '4'
 # applies to both data and design matrix
 normalise = 'local'
 
-labels = ['L_%s_ROI-lh' % area, 'R_%s_ROI-rh' % area]
+labels = ['R_%s_ROI-rh' % area, 'L_%s_ROI-lh' % area]
 
-delays = [330, 370, 400, 430, 470]
+delays = [400]
 
 # whether to do response aligned analysis
-resp_align = True
+resp_align = False
 
 # whether to exclude trials that were timed out (resp_align=True overwrites
 # this setting with exclude_to=True)
@@ -48,13 +48,13 @@ exclude_to = True
 # onset aligned analysis: all trials with response-aligned time >= toolate will
 # be removed from regression analysis, set to 5000 or higher to include all 
 # available trials
-toolate = 5000
+toolate = -200
 
 if resp_align:
     timeslice = [-350, min(min(delays), -350)]
     fbase = 'response-aligned'
 else:
-    timeslice = [max(delays), 1500]
+    timeslice = [max(delays), 1100]
     fbase = 'firstdot-aligned'
 
 times = pd.Index(np.arange(timeslice[0], timeslice[1]+10, step=10), 
@@ -81,7 +81,7 @@ skip_mix = True
 # how many different chains to run, give a single number if Stan should run the
 # chains in parallel itself, give a list or array, if chains should be run in
 # sequence outside of Stan (to prevent memory problems)
-nchains = np.ones(4)
+nchains = 4
 nchains = np.atleast_1d(nchains).astype(int)
 
 with pd.HDFStore(fstore, mode='w', complevel=7, complib='blosc') as store:

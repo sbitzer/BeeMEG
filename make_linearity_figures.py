@@ -22,6 +22,9 @@ import scipy.stats
 # resp-align, delay=400, times=[-500, 400], area 4
 fname = 'source_linearity_201804111716.h5'
 
+# trial-onset-aligned, delay=400, times=[400, 1100], area 4, only ev vs resp
+#fname = 'source_linearity_201805280909.h5'
+
 with pd.HDFStore(os.path.join(helpers.resultsdir, fname), 'r') as store:
     r_name = store['r_name'][0]
     options = store['scalar_params']
@@ -30,7 +33,11 @@ with pd.HDFStore(os.path.join(helpers.resultsdir, fname), 'r') as store:
     sample_diagnostics = store['sample_diagnostics']
 
 resp_align = options.resp_align
-delay = options.delay
+try:
+    delay = options.delay
+except:
+    with pd.HDFStore(os.path.join(helpers.resultsdir, fname), 'r') as store:
+        delay = store['delays'].values
 
 labels = samples.index.levels[0]
 area = labels[0][2:-7]
@@ -234,9 +241,13 @@ axes = plt.subplot(grid[0, 0])
 axes = [axes, plt.subplot(grid[0, 1], sharex=axes),
         plt.subplot(bp_grid[0, 0])]
 
-endt = 0
+if resp_align:
+    endt = 0
+    tsplit = -170
+else:
+    endt = 900
+    tsplit = endt + 10
 plottimes = list(times[times <= endt])
-tsplit = -170
 
 col= 'k'
 evidcol = 'C0'
@@ -265,8 +276,10 @@ for label, ax in zip(labels, axes[:2]):
 axes[0].set_ylabel('cross-validated log-likelihood difference')
 
 # plot color box annotations and set axis limits
-yl = [loodiffs.loc[(labels[0], plottimes), ('ev_vs_resp', 'diff')].min(), 
-      0.004]
+if resp_align:
+    yl = [-0.018, 0.004]
+else:
+    yl = [-0.001, 0.002]
 for ax in axes[:2]:
     ax.set_ylim(yl)
     ax.set_autoscale_on(False)
@@ -287,8 +300,15 @@ if resp_align and plottimes[-1] >= 0:
     for ax in axes[:2]:
         ax.plot([0, 0], yl, ':k', label='time of response', zorder=1)
 
-axes[0].text(plottimes[0], 0.002, 'supports evidence', color=evidcol, fontsize=14)
-axes[0].text(plottimes[0], -0.004, 'supports choice', color=respcol, fontsize=14)
+if resp_align:
+    ev_text = 0.002
+    ch_text = -0.004
+else:
+    ev_text = 0.0018
+    ch_text = -0.0009
+
+axes[0].text(plottimes[0], ev_text, 'supports evidence', color=evidcol, fontsize=14)
+axes[0].text(plottimes[0], ch_text, 'supports choice', color=respcol, fontsize=14)
 
 # box plot for early and late time points
 diff = loodiffs.loc[(slice(None), slice(plottimes[0], tsplit-1)), 
@@ -322,5 +342,6 @@ bp_grid.tight_layout(fig, rect=[0.68, 0, 1, 0.97])
 fig.text(0.02, 0.92, 'A', weight='bold', fontsize=20)
 fig.text(0.71, 0.92, 'B', weight='bold', fontsize=20)
 
-fig.savefig(os.path.join(helpers.figdir, 'evidence_vs_response_%s.png' % area), 
-            dpi=300)
+fig.savefig(os.path.join(helpers.figdir, 'evidence_vs_response_%s%s.png' % (
+        area, '_response-aligned' if resp_align else '_firstdot-aligned')), 
+        dpi=300)
