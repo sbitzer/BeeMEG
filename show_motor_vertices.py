@@ -92,7 +92,7 @@ ss.add_measure(src_df, 'p_fdr')
 
 
 #%% prepare plotting
-def get_colorinfo(measure, src_df, fdr_alpha=0.01):
+def get_colorinfo(measure, src_df, fdr_alpha=0.01, only_significant=False):
     # find measure value that is the first one with p-value equal or smaller 
     # than fdr_alpha
     pdiff = src_df.p_fdr - fdr_alpha
@@ -103,9 +103,16 @@ def get_colorinfo(measure, src_df, fdr_alpha=0.01):
         fmid = src_df[measure].abs().quantile(0.95)
     
     fmax = src_df[measure].abs().max()
-    colorinfo = {'fmin': fmid / 2., 
-                 'fmid': fmid, 
-                 'fmax': fmax}
+    
+    if only_significant:
+        colorinfo = {'fmin': fmid, 
+                     'fmid': fmid + (fmax-fmid) * 0.01, 
+                     'fmax': fmax,
+                     'transparent': True}
+    else:
+        colorinfo = {'fmin': fmid / 2., 
+                     'fmid': fmid, 
+                     'fmax': fmax}
     
     if measure == 'tval':
         colorinfo['center'] = 0
@@ -157,7 +164,7 @@ brain = Brain('fsaverage', 'both', 'inflated', cortex='low_contrast',
 add_motor_labels(brain, src_df)
 
 sv.show_label_vertices(src_df, brain, measure, 
-                       **get_colorinfo(measure, src_df, fdr_alpha))
+                       **get_colorinfo(measure, src_df, fdr_alpha, True))
 
 
 #%% save figures
