@@ -21,7 +21,7 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 #%% load data
 r_name = 'dot_x'
 measure = 'tval'
-fdr_alpha = 0.01
+fdr_alpha = 0.05
 
 # None for no figure and movie generation
 # otherwise a list of times for which figures should be generated

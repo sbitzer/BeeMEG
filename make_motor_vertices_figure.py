@@ -35,7 +35,7 @@ fig.text(0.25, 0.93, "response-aligned grand average", ha='center',
 fig.text(0.75, 0.93, r"dot onset aligned evidence correlation", 
          ha='center', fontsize=16)
 
-fig.text(0.5, 0.8, "p < 0.01\nFDR corrected", 
+fig.text(0.5, 0.8, "p < 0.05\nFDR corrected", 
          ha='center', fontsize=12, color='#909090')
 
 fig.savefig(os.path.join(helpers.figdir, 
