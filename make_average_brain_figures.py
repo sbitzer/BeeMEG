@@ -12,6 +12,7 @@ import source_statistics as ss
 import numpy as np
 import pandas as pd
 import os
+import mne
 
 from surfer import Brain
 
@@ -36,6 +37,8 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
 # label_tc normalised across trials but within times and subjects
 basefile = 'source_sequential_201801291241.h5'
+# newest results are based on this parcellation, cf. 'srcfile' in basefile
+parc = 'HCPMMP1_5_8'
 
 if basefile.startswith('source_sequential'):
     regressors = ['dot_x', 'dot_y', 'accev', 'sum_dot_y_prev']
@@ -105,12 +108,17 @@ to_csv(avcsv.reset_index()[
 
 
 #%% print areas with largest effects
+toplabels = {}
 for hemi in ['L', 'R']:
     ind = avsrcdf.index.get_level_values('label').map(
             lambda x: x.startswith(hemi))
     
     print('\nhemi: ' + hemi)
-    print(avsrcdf[ind].abs().sort_values('tval', ascending=False).head(5))
+    avtop = avsrcdf[ind].abs().sort_values('tval', ascending=False).head(5)
+    print(avtop)
+    
+    toplabels[hemi.lower() + 'h'] = list(
+            avtop.xs(times[0], level='time').index)
 
 
 #%% 
@@ -125,7 +133,7 @@ colorinfo = {'fmin': avsrcdf.loc[list(areas), show_measure].abs().min(),
 #%% make helper plotting function
 filepat_base = 'av_brain_' + show_measure
 
-def brain_plot(brain):
+def brain_plot(brain, toplabels=None):
     views = {'rh': ['medial', 'lateral'], #{'azimuth': -20, 'elevation': 62, 'roll': -68}], 
              'lh': ['lateral', 'medial']}
     
@@ -137,8 +145,16 @@ def brain_plot(brain):
     else:
         hemi = brain.geo.keys()[0]
         
-    sv.show_labels_as_data(avsrcdf, show_measure, 
-                           brain, time_label=None, **colorinfo)
+    sv.show_labels_as_data(avsrcdf, show_measure, brain, time_label=None, 
+                           parc=parc, **colorinfo)
+    
+    if toplabels is not None:
+        alllabels = mne.read_labels_from_annot(
+                'fsaverage', parc=parc, hemi=hemi)
+        for label in alllabels:
+            if label.name in toplabels[hemi]:
+                brain.add_label(label, borders=1, hemi=hemi, alpha=0.8, 
+                                color='k')
     
     # increase font size of colorbar - this only works by increasing the 
     # colorbar itself and setting the ratio of colorbar to text
@@ -156,7 +172,7 @@ def brain_plot(brain):
 
 #%%
 hemi = 'lh'
-brain = brain_plot(hemi)
+brain = brain_plot(hemi, toplabels)
 
 #%% stitch images from different hemispheres together
 infiles = []
