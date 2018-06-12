@@ -49,11 +49,13 @@ fig.savefig(os.path.join(figdir, 'pooledRTs.png'),
 
 #%% scatter plot of accuracy and RT across participants
 axgrid = sns.jointplot('accuracy', 'medianRT', 
-                       data=regressors.subject.loc[subjects])
+                       data=regressors.subject.loc[subjects], 
+                       size=3.2, stat_func=None)
 axgrid.ax_joint.set_ylabel('median RT (s)')
 
-axgrid.fig.savefig(os.path.join(figdir, 'subject_behaviour.png'), dpi=300)
-axgrid.fig.savefig(os.path.join(figdir, 'subject_behaviour.eps'))
+#axgrid.fig.savefig(os.path.join(figdir, 'subject_behaviour.png'), dpi=300)
+#axgrid.fig.savefig(os.path.join(figdir, 'subject_behaviour.eps'))
+axgrid.fig.savefig(os.path.join(figdir, 'subject_behaviour.svg'))
 
 
 #%% plot evidence-choice correlations
