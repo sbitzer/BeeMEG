@@ -145,18 +145,28 @@ regs = dict(abs=dict(x='abs_dot_x', y='abs_dot_y', name='absolute'),
 cols = dict(x='C0', y='C1')
 
 leglines = []
-legreg = 'abs'
+legreg = 'perc'
 for ax, reg in zip(axes, ['mom', 'acc', 'abs', 'perc']):
     for coord in ['x', 'y']:
         values = second_level.loc[:, (measure, regs[reg][coord])].abs().mean(
                 level='time')
         
-        line, = ax.plot(values.index, values, color=cols[coord], label=coord)
+        # shift accumulated evidence regressor results 100 ms to later to
+        # correct for it being defined only up to the previous dot, i.e., 
+        # accumulated evidence of the dot of interest should be 100 ms later
+        # I'm assuming here that the shape of the results is the same for 
+        # previous and current dot
+        if reg == 'acc':
+            plottimes = values.index + 100
+        else:
+            plottimes = values.index
+        
+        line, = ax.plot(plottimes, values, color=cols[coord], label=coord)
         if legreg == reg:
             leglines.append(line)
         
         for p in range(1, P):
-            pl, = ax.plot(values.index, 
+            pl, = ax.plot(plottimes, 
                     second_level_perms.loc[p, (measure, regs[reg][coord])].abs(
                             ).mean(level='time'),
                     ':', color=line.get_color(), lw=1, label='permuted')
