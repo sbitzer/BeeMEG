@@ -239,10 +239,10 @@ axes[0].set_ylabel(r'$\beta$')
           
 fig.tight_layout()
 
-fig.text(0.09, 0.91, 'A', weight='bold', fontsize=18)
-fig.text(0.545, 0.91, 'B', weight='bold', fontsize=18)
+fig.text(0.09, 0.91, 'B', weight='bold', fontsize=18)
+fig.text(0.545, 0.91, 'C', weight='bold', fontsize=18)
 
-fig.savefig(os.path.join(figdir, 'example_area_tcs.png'), 
+fig.savefig(os.path.join(figdir, 'example_area_tcs.svg'), 
             dpi=300)
 
 
