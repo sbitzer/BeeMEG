@@ -326,9 +326,10 @@ for perm in range(1, nperm+1):
         # nan in any column
         if exclude_to:
             ch_sub = choices.loc[sub]
-            epochs.loc[ch_sub[ch_sub == helpers.toresponse[0]].index.values, 
-                      epochs.columns[0]] = np.nan
-                       
+            toind = ch_sub[ch_sub == helpers.toresponse[0]].index.values
+            if toind.size > 0:
+                epochs.loc[toind, epochs.columns[0]] = np.nan
+            
         # NaN within each trial time points that are "too late" with respect to
         # response aligned time
         for tr in trials:

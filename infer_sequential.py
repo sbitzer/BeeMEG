@@ -377,7 +377,7 @@ for perm in np.arange(nperm+1):
             DMsub = DM.loc[sub].copy()
             DMsub.index = get_DM_time_index(t0)
             
-            model = pd.concat([epochs.loc[DMsub.index], DMsub], axis=1,
+            model = pd.concat([epochs.reindex(DMsub.index), DMsub], axis=1,
                                keys=['data', 'DM'], names=['var', 'col'])
             
             # NaN all values for which time points are too late;
@@ -391,8 +391,9 @@ for perm in np.arange(nperm+1):
             # NaN all values for trials that were timed out, if desired
             if exclude_to:
                 ch_sub = choices.loc[sub]
-                model.loc[ch_sub[ch_sub == 0].index.values, 
-                          model.columns[0]] = np.nan
+                toind = ch_sub[ch_sub == helpers.toresponse[0]].index.values
+                if toind.size > 0:
+                    model.loc[toind, model.columns[0]] = np.nan
             
 #            for r_name in timeDM.keys():
 #                DM.loc[sub, r_name] = timeDM[r_name].loc[t0].loc[sub].values
