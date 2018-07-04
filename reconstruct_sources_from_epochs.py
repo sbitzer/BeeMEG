@@ -125,7 +125,8 @@ for sub in subjects:
     
     # load forward operator
     fwdfile = os.path.join(bem_dir, '%s-oct-6-fwd.fif' % subject)
-    fwd = mne.read_forward_solution(fwdfile, surf_ori=fwd_surf_ori)
+    fwd = mne.read_forward_solution(fwdfile)
+    fwd = mne.convert_forward_solution(fwd, fwd_surf_ori, fwd_force_fixed)
     
     # restrict forward model to selected types
     fwd = mne.pick_types_forward(fwd, meg=chtype, eeg=False)
