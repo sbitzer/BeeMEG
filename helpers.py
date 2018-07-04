@@ -20,8 +20,12 @@ import gc
 dotfile = 'batch_dots_pv2.mat'
 
 # directories
-figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
-basedir = 'data'
+if os.name == 'posix':
+    figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
+    basedir = 'data'
+else:
+    figdir = '.'
+    basedir = 'X:\BeeMEG\Variables'
 behavdatadir = os.path.join(basedir, 'meg_behav')
 megdatadir = os.path.join(basedir, 'meg_final_data')
 resultsdir = os.path.join(basedir, 'inf_results')

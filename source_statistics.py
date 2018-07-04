@@ -24,7 +24,8 @@ import matplotlib.pyplot as plt
 if os.name == 'posix':
     subjects_dir = 'mne_subjects'
 else:
-    subjects_dir = os.path.expanduser('~\\BeeMEG\\mne_subjects')
+#    subjects_dir = os.path.expanduser('~\\BeeMEG\\mne_subjects')
+    subjects_dir = 'E:\bitzer\mne_subjects'
 subject = 'fsaverage'
 bem_dir = os.path.join(subjects_dir, subject, 'bem')
 inf_dir = os.path.join('data', 'inf_results')
