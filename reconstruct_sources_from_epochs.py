@@ -17,7 +17,8 @@ import gc
 
 #%% options
 # baseline period (set to None for no baseline correction)
-bl = None
+bl = (-0.3, 0)
+#bl = None
 
 # desired sampling frequency of data
 sfreq = 100
@@ -27,7 +28,7 @@ sfreq = 100
 hfreq = sfreq
 
 # time window within an epoch to consider
-window = [-0.3, 2.5]
+window = [0, 2.5]
 
 # chtype=True for all MEG-channels, chtype='mag' for magnetometers
 chtype = True
@@ -35,26 +36,30 @@ chtype = True
 # source reconstruction method
 method = 'dSPM'
 
-fwd_surf_ori = True
-
-# fixed orientation?
-fixed_ori = True
-
-if fixed_ori:
-    inv_fixed = True
-else:
-    inv_fixed = False
-
-inv_loose = 'auto'
-    
+# fixed orientation? see doc for mne.minimum_norm.make_inverse_operator
+inv_fixed = 'auto'
+inv_loose = 0.2
 inv_depth = 0.8
+
+# properties of forward solution for given reconstruction constraints
+fwd_surf_ori = True
+if inv_depth is None and inv_loose == 0:
+    fwd_force_fixed = True
+else:
+    fwd_force_fixed = False
+
+# maintain dipole orientations or only magnitudes? see doc for 
+# mne.minimum_norm.apply_inverse_epochs, choose None for magnitude of vector
+# choose 'normal' for magnitude perpendicular to cortical surface
+pick_ori = 'normal'
 
 # parcellation on which labels are based
 parc = 'HCPMMP1_5_8'
 
 # specific labels that should be stored, all others are discarded,
 # use empty list to indicate that all labels should be stored
-sections = [6, 7, 8, 16]
+#sections = [6, 7, 8, 16]
+sections = []
 anames = ss.Glasser_areas[ss.Glasser_areas['main section'].apply(
         lambda r: r in sections)]['area name']
 lselection = (  list(anames.apply(lambda n: 'L_%s_ROI-lh' % n))
@@ -62,13 +67,14 @@ lselection = (  list(anames.apply(lambda n: 'L_%s_ROI-lh' % n))
 
 # set to None to keep original source points, 
 # otherwise see MNE's extract_label_time_course for available modes
-label_mode = None
+label_mode = 'mean_flip'
 
 options = pd.Series({'chtype': chtype, 'sfreq': sfreq, 'hfreq': hfreq, 
                      'method': method, 'fwd_surf_ori': fwd_surf_ori,
+                     'fwd_force_fixed': fwd_force_fixed,
                      'inv_fixed': inv_fixed, 'inv_loose': inv_loose,
-                     'inv_depth': inv_depth, 'parc': parc,
-                     'label_mode': label_mode})
+                     'inv_depth': inv_depth, 'pick_ori': pick_ori, 
+                     'parc': parc, 'label_mode': label_mode})
 
 # where to store
 subjects_dir = 'mne_subjects'
@@ -140,7 +146,8 @@ for sub in subjects:
             depth=inv_depth)
     
     # lambda2 is related to the precision of the prior over source currents
-    # MNE suggests to set it to 1 / SNR**2
+    # MNE suggests to set it to 1 / SNR**2 and uses SNR=3 as default in 
+    # mne.minimum_norm.apply_inverse
     lambda2 = 1 / 3**2
     
     # select time points for which to do source estimation
@@ -154,8 +161,8 @@ for sub in subjects:
     # will be generated - this way you never need to hold all results in memory
     # at once
     stcs_gen = mne.minimum_norm.apply_inverse_epochs(
-            epochs, inverse_operator, lambda2, method=method, pick_ori=None,
-            return_generator=True)
+            epochs, inverse_operator, lambda2, method=method, 
+            pick_ori=pick_ori, return_generator=True)
     
     labels = mne.read_labels_from_annot(subject, parc=parc, hemi='both')
     if lselection:
@@ -206,7 +213,7 @@ for sub in subjects:
                                 dtype=float)
         
         label_tc_gen = mne.extract_label_time_course(
-                stcs_gen, labels, fwd['src'], mode='mean')
+                stcs_gen, labels, fwd['src'], mode=label_mode)
         for trial, tc in zip(trials, label_tc_gen):
             label_tc.loc[(sub, trial, slice(None)), :] = tc.T
         
