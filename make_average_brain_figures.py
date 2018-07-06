@@ -36,7 +36,15 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 # time window [0, 690], exclude time-outs, local normalisation of DM
 # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
 # label_tc normalised across trials but within times and subjects
-basefile = 'source_sequential_201801291241.h5'
+#basefile = 'source_sequential_201801291241.h5'
+
+# loose source orientations, but cortex normal currents
+# label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+basefile = 'source_sequential_201807041930.h5'
+
 # newest results are based on this parcellation, cf. 'srcfile' in basefile
 parc = 'HCPMMP1_5_8'
 
@@ -67,8 +75,10 @@ show_measure = 'tval'
 use_basefile = show_measure in ss.basefile_measures
 
 r_name = 'dot_x'
-
 twin = [300, 500]
+
+#r_name = 'accev'
+#twin = [50, 70]
 
 winclusters = clusters.loc[r_name]
 winclusters = winclusters[

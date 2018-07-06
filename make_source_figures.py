@@ -46,7 +46,21 @@ figdir = helpers.figdir
 # time window [0, 690], exclude time-outs, local normalisation of DM
 # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
 # label_tc normalised across trials but within times and subjects
-basefile = 'source_sequential_201801291241.h5'
+#basefile = 'source_sequential_201801291241.h5'
+
+# loose source orientations, but only their overall magnitude
+# label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+#basefile = 'source_sequential_201807031144.h5'
+
+# loose source orientations, but cortex normal currents
+# label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+basefile = 'source_sequential_201807041930.h5'
 
 regressors = ['dot_x', 'dot_y', 'accev']
 
@@ -96,7 +110,7 @@ fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=[7.5, 3])
 
 # dot_x
 values = second_level.loc[:, (measure, 'dot_x')].abs().mean(level='time')
-x_times = [120, 180, 330, 410]
+x_times = [120, 170, 330, 410]
 
 ax = axes[0]
 line, = ax.plot(values.index, values)
@@ -114,7 +128,7 @@ ax.set_title('x-coordinate', fontdict={'fontsize': 12})
 
 # dot_y
 values = second_level.loc[:, (measure, 'dot_y')].abs().mean(level='time')
-y_times = [120, 180, 330]
+y_times = [120, 190, 350]
 
 ax = axes[1]
 ax.plot(values.index, values)
