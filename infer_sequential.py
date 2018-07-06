@@ -59,8 +59,8 @@ trialregs_dot = 0
 # 700 ms as right edge of the dot onset aligned time window, dots 1-25 could
 # enter the analysis
 # note that normalisation of data is still over all times in srcfile
-timeslice = [0, 690]
-#timeslice = [250, 600]
+#timeslice = [0, 690]
+timeslice = [250, 600]
 
 # How many permutations should be computed?
 nperm = 3
@@ -122,7 +122,10 @@ elif datatype == 'source':
 #    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
     
     # label mode = mean, long epochs, HCPMMP_5_8, loose=0.2, magnitude ori
-    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807021743.h5'
+#    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807021743.h5'
+    
+    # label mode = mean_flip, long epochs, HCPMMP_5_8, loose=0.2, normal ori
+#    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807041847.h5'
     
     # label mode = mean
     #srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
@@ -142,6 +145,11 @@ elif datatype == 'source':
     # label mode = None, lselection=premotor, motor, mid cingulate, parietal
     # window = [-0.3, 2.5], no baseline correction before source reconstruction
 #    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201802081827.h5'
+    
+    # loose=0.2, normal ori
+    # label mode = None, lselection=premotor, motor, mid cingulate, parietal
+    # window = [-0.3, 2.5], no baseline correction before source reconstruction
+    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807051740.h5'
     
     if os.name == 'posix':
         srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)

@@ -17,8 +17,8 @@ import gc
 
 #%% options
 # baseline period (set to None for no baseline correction)
-bl = (-0.3, 0)
-#bl = None
+#bl = (-0.3, 0)
+bl = None
 
 # desired sampling frequency of data
 sfreq = 100
@@ -28,7 +28,7 @@ sfreq = 100
 hfreq = sfreq
 
 # time window within an epoch to consider
-window = [0, 2.5]
+window = [-0.3, 2.5]
 
 # chtype=True for all MEG-channels, chtype='mag' for magnetometers
 chtype = True
@@ -58,8 +58,8 @@ parc = 'HCPMMP1_5_8'
 
 # specific labels that should be stored, all others are discarded,
 # use empty list to indicate that all labels should be stored
-#sections = [6, 7, 8, 16]
-sections = []
+sections = [6, 7, 8, 16]
+#sections = []
 anames = ss.Glasser_areas[ss.Glasser_areas['main section'].apply(
         lambda r: r in sections)]['area name']
 lselection = (  list(anames.apply(lambda n: 'L_%s_ROI-lh' % n))
@@ -67,7 +67,7 @@ lselection = (  list(anames.apply(lambda n: 'L_%s_ROI-lh' % n))
 
 # set to None to keep original source points, 
 # otherwise see MNE's extract_label_time_course for available modes
-label_mode = 'mean_flip'
+label_mode = None
 
 options = pd.Series({'chtype': chtype, 'sfreq': sfreq, 'hfreq': hfreq, 
                      'method': method, 'fwd_surf_ori': fwd_surf_ori,
