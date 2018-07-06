@@ -16,7 +16,11 @@ import scipy.stats
 
 
 #%% load data
-resfile = 'source_response-aligned_201803221650.h5'
+# based on source reconstruction with fixed ori and label_mode = mean
+#resfile = 'source_response-aligned_201803221650.h5'
+
+# based on source reconstruction with loose=0.2, normal ori and mean_flip
+resfile = 'source_response-aligned_201807051138.h5'
 
 with pd.HDFStore(os.path.join(helpers.resultsdir, resfile), 'r') as store:
     first_level = store['first_level']

@@ -21,7 +21,10 @@ from warnings import warn
 #%% options
 
 # label mode = mean
-srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
+#srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201712061743.h5'
+
+# label mode = mean_flip, long epochs, HCPMMP_5_8, loose=0.2, normal ori
+srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807041847.h5'
 
 srcfile = os.path.join(ss.bem_dir, srcfile)
 
