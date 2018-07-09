@@ -193,7 +193,7 @@ def extract_hemi_data(src_series, hemi):
     return data
 
 
-def get_label_sign_flips(lnames, parc='HCPMMP1_5_8', 
+def get_label_sign_flips(lnames, parc='HCPMMP1_5_8', combine=False,
                          srcfile=os.path.join(bem_dir, 
                                               'fsaverage-oct-6-src.fif')):
     # load source spaces
@@ -202,18 +202,39 @@ def get_label_sign_flips(lnames, parc='HCPMMP1_5_8',
     # load labels
     labels = mne.read_labels_from_annot('fsaverage', parc)
     
-    flips = []
-    for label in labels:
-        if label.name in lnames:
-            flip = mne.label.label_sign_flip(label, src)
-            
-            if label.hemi == 'lh':
-                vertices = np.intersect1d(label.vertices, src[0]['vertno'])
-            else:
-                vertices = np.intersect1d(label.vertices, src[1]['vertno'])
+    hemind = dict(lh=0, rh=1)
+    
+    if combine:
+        flips = []
+        for hemi in ['lh', 'rh']:
+            lind = []
+            biglabel = None
+            for label in labels:
+                if (label.name.startswith(hemi[0].upper()) 
+                    and label.name in lnames):
+                    
+                    if biglabel is None:
+                        biglabel = label
+                    else:
+                        biglabel = biglabel + label
+                    
+                    vertices = np.intersect1d(label.vertices, 
+                                              src[hemind[hemi]]['vertno'])
+                    lind += [label.name + '_%06d' % vert for vert in vertices]
+        
+            flips.append(pd.Series(mne.label.label_sign_flip(biglabel, src),
+                                   index=lind))
+    else:
+        flips = []
+        for label in labels:
+            if label.name in lnames:
+                flip = mne.label.label_sign_flip(label, src)
                 
-            flips.append(pd.Series(flip, index=[label.name + '_%06d' % vert 
-                                                for vert in vertices]))
+                vertices = np.intersect1d(label.vertices, 
+                                          src[hemind[label.hemi]]['vertno'])
+                    
+                flips.append(pd.Series(flip, index=[label.name + '_%06d' % vert 
+                                                    for vert in vertices]))
             
     return pd.concat(flips)
 

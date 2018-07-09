@@ -98,7 +98,8 @@ src_df = ss.load_src_df(basefile, r_name, use_basefile=True)
 ss.add_measure(src_df, 'p_fdr')
 
 flips = sv.get_label_sign_flips(
-        src_df.index.get_level_values('label').map(lambda s: s[:-7]).unique())
+        src_df.index.get_level_values('label').map(lambda s: s[:-7]).unique(),
+        combine=True)
 for time in src_df.index.get_level_values('time').unique():
     src_df.loc[(slice(None), time), 'tval'] = (
             src_df.xs(time, level='time').tval * flips).values
