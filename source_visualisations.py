@@ -193,6 +193,31 @@ def extract_hemi_data(src_series, hemi):
     return data
 
 
+def get_label_sign_flips(lnames, parc='HCPMMP1_5_8', 
+                         srcfile=os.path.join(bem_dir, 
+                                              'fsaverage-oct-6-src.fif')):
+    # load source spaces
+    src = mne.read_source_spaces(srcfile)
+    
+    # load labels
+    labels = mne.read_labels_from_annot('fsaverage', parc)
+    
+    flips = []
+    for label in labels:
+        if label.name in lnames:
+            flip = mne.label.label_sign_flip(label, src)
+            
+            if label.hemi == 'lh':
+                vertices = np.intersect1d(label.vertices, src[0]['vertno'])
+            else:
+                vertices = np.intersect1d(label.vertices, src[1]['vertno'])
+                
+            flips.append(pd.Series(flip, index=[label.name + '_%06d' % vert 
+                                                for vert in vertices]))
+            
+    return pd.concat(flips)
+
+
 def find_mni_coordinates(label, parc='HCPMMP1_5_8'):
     """Returns MNI-coordinates of center of mass for selected labels."""
     

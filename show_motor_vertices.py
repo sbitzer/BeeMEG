@@ -68,6 +68,13 @@ else:
         # local normalisation of DM, trial normalisation of data
         # x/y coordinates, absolutes, percupt, accev, sum_dot_y_prev
         basefile = 'source_sequential_201803131115.h5'
+        
+        # source reconstruction with loose=0.2 and pick_ori='normal'
+        # vertices of premotor, motor, paracentral and superior parietal
+        # no baseline correction, toolate=-200, time window [250, 600]
+        # local normalisation of DM, trial normalisation of data
+        # x/y coordinates, absolutes, percupt, accev, sum_dot_y_prev
+        basefile = 'source_sequential_201807061103.h5.tmp'
     elif datatype == '':
         # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
         # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
@@ -89,6 +96,12 @@ if len(datatype) > 0 and not datatype.startswith('_'):
 
 src_df = ss.load_src_df(basefile, r_name, use_basefile=True)
 ss.add_measure(src_df, 'p_fdr')
+
+flips = sv.get_label_sign_flips(
+        src_df.index.get_level_values('label').map(lambda s: s[:-7]).unique())
+for time in src_df.index.get_level_values('time').unique():
+    src_df.loc[(slice(None), time), 'tval'] = (
+            src_df.xs(time, level='time').tval * flips).values
 
 
 #%% prepare plotting
