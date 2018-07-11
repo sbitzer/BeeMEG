@@ -16,11 +16,20 @@ import scipy.stats
 
 
 #%% load data
-# based on source reconstruction with fixed ori and label_mode = mean
+# area 4, based on source reconstruction with fixed ori and label_mode = mean
 #resfile = 'source_response-aligned_201803221650.h5'
 
-# based on source reconstruction with loose=0.2, normal ori and mean_flip
-resfile = 'source_response-aligned_201807051138.h5'
+# area 4, based on source reconstruction with loose=0.2, normal ori and mean_flip
+#resfile = 'source_response-aligned_201807051138.h5'
+
+# area 3a, based on source reconstruction with loose=0.2, normal ori and mean_flip
+resfile = 'source_response-aligned_201807101536.h5'
+
+# area 6a, based on source reconstruction with loose=0.2, normal ori and mean_flip
+#resfile = 'source_response-aligned_201807101714.h5'
+
+# area FEF, based on source reconstruction with loose=0.2, normal ori and mean_flip
+#resfile = 'source_response-aligned_201807101839.h5'
 
 with pd.HDFStore(os.path.join(helpers.resultsdir, resfile), 'r') as store:
     first_level = store['first_level']
@@ -33,6 +42,12 @@ area = labels[0][2:-7]
 resp_align = resfile.find('response-aligned') > 0
 
 r_names = second_level.columns.get_level_values('regressor').unique()
+
+if resp_align:
+    fbase = 'response-aligned'
+else:
+    fbase = 'firstdot-aligned'
+fbase += '_' + area
 
 
 #%% average over delays and compute statistics
@@ -63,12 +78,6 @@ ss.add_measure(sl, 'mlog10p_fdr')
 
 
 #%% define colors for plotting
-if resp_align:
-    fbase = 'response-aligned'
-else:
-    fbase = 'firstdot-aligned'
-fbase += '_' + area
-
 r_colors = {'intercept': 'C0', 'dot_x_time': 'C1', 'dot_y_time': 'C2', 
             'percupt_x_time': 'C3', 'percupt_y_time': 'C4'}
 r_labels = {'percupt_y_time': 'PU-y', 

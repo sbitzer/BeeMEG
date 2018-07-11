@@ -28,7 +28,7 @@ srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807041847.h5'
 
 srcfile = os.path.join(ss.bem_dir, srcfile)
 
-area = '4'
+area = 'FEF'
 
 # set to 'local' to normalise within time points and subjects
 # set to 'global' to normalise across the complete design matrix
