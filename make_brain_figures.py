@@ -51,7 +51,14 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 # time window [0, 690], exclude time-outs, local normalisation of DM
 # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
 # label_tc normalised across trials but within times and subjects
-basefile = 'source_sequential_201801291241.h5'
+#basefile = 'source_sequential_201801291241.h5'
+
+# loose source orientations, but cortex normal currents
+# label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+basefile = 'source_sequential_201807041930.h5'
 
 
 #%%
