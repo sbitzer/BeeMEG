@@ -27,30 +27,38 @@ resfile = 'meg_sequential_201802061518.h5'
 
 resfile = os.path.join(helpers.resultsdir, resfile)
 
-figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
+figdir = helpers.figdir
+
+accev_off = 100
+accev_sign = -1
 
 
 #%% helper functions
 def plot_single_signal(fl_data, sl_data, label, r_name, ax=None, measure='mean'):
-    dat = fl_data.loc[(0, label, slice(None)), 
-                      (slice(None), 'beta', r_name)]
+    sign = accev_sign if r_name == 'accev' else 1
+    off = accev_off if r_name == 'accev' else 0
+    
+    dat = sign * fl_data.loc[(0, label, slice(None)), 
+                             (slice(None), 'beta', r_name)].copy()
     times = dat.index.get_level_values('time')
     
     if ax is None:
         fig, ax = plt.subplots()
         
-    l = ax.plot(times, dat, color='.7', lw=1, label='single subjects')
-    l1 = ax.plot(times, sl_data.loc[(slice(1,3), label, slice(None)), (measure, r_name)]
-                               .reset_index('permnr')
-                               .pivot(columns='permnr'), 
-                 ':k', label='mean (permuted data)')
-    l2 = ax.plot(times, sl_data.loc[(0, label, slice(None)), (measure, r_name)], 
-                 'k', lw=2, label='mean')
+    l = ax.plot(times + off, dat, color='.7', lw=1, label='single subjects')
+    l1 = ax.plot(
+            times + off, sign * sl_data.loc[
+                    (slice(1,3), label, slice(None)), (measure, r_name)]
+                    .reset_index('permnr').pivot(columns='permnr'), 
+            ':k', label='mean (permuted data)')
+    l2 = ax.plot(times + off, sign * sl_data.loc[
+            (0, label, slice(None)), (measure, r_name)], 
+            'k', lw=2, label='mean')
     
     ax.legend([l[0], l1[0], l2[0]], ['single subjects', 'mean (permuted)', 'mean']);
     
     ax.set_xlabel('time from dot onset (ms)')
-    ax.set_ylabel('beta values')
+    ax.set_ylabel(r'$\beta$')
 
 
 #%% load sensor-level results
@@ -228,39 +236,146 @@ fig.savefig(os.path.join(figdir, 'response_absmean.png'),
 
 #%% show example beta-trajectories for selected sensors
 
-def sensor_signal_plot(r_name, sensor, time, title):
-    fig = plt.figure(figsize=(7.5, 3.5))
+def sensor_signal_plot(r_name, sensor, time, title, axes=None):
+    if axes is None:
+        fig = plt.figure(figsize=(7.5, 3.5))
+    
+    sign = accev_sign if r_name == 'accev' else 1
+    off = accev_off / 1000 if r_name == 'accev' else 0
     
     # plot topomap for overview of selected sensor
-    values = second_level.xs(0)[('mean', r_name)]
-    values = values.reset_index(level='channel').pivot(columns='channel')
+    values = sign * second_level.xs(0)[('mean', r_name)].copy()
+    values = values.reset_index(level='label').pivot(columns='label')
     values.columns = values.columns.droplevel([0,1])
     
     chmask = np.zeros((values.columns.size, values.index.size), dtype=bool)
     chmask[values.columns.get_loc(sensor), :] = True
     
     ev = mne.EvokedArray(values.values.T, evoked.info, 
-                         tmin=values.index[0], nave=480*5)
+                         tmin=values.index[0] + off, nave=480*5)
     
-    t_ax = plt.axes([0.02, 0.28, 0.18, 0.5])
-    ev.plot_topomap(time, scale=1, vmin=vmin, vmax=vmax, image_interp='nearest', 
-                    unit='beta', outlines='skirt', axes=t_ax, colorbar=False,
-                    mask=chmask, mask_params={'markersize': 10});
+    if axes is None:
+        t_ax = plt.axes([0.02, 0.28, 0.18, 0.5])
+    else:
+        t_ax = axes[0]
+        fig = t_ax.get_figure()
+        
+    ev.plot_topomap(time, scalings=1, vmin=vmin, vmax=vmax, 
+                    image_interp='nearest', units='beta', outlines='skirt',
+                    axes=t_ax, colorbar=False, mask=chmask, 
+                    mask_params={'markersize': 10}, time_unit='ms');
                     
-    
     # plot time courses
-    ax = plt.axes([0.3, 0.15, 0.65, 0.75])
+    if axes is None:
+        ax = plt.axes([0.3, 0.15, 0.65, 0.75])
+    else:
+        ax = axes[1]
+        
     plot_single_signal(first_level, second_level, sensor, r_name, ax);
     ax.set_title(title)
     ax.set_ylim(-0.3, 0.3)
     
-    # export
-    fig.savefig(os.path.join(figdir, 'sensorsignal_%s_%s.png' % (r_name, sensor)), 
-                dpi=300)
+    return fig, [t_ax, ax]
+
+
+#%%
+fig, axes = sensor_signal_plot('dot_y', 'MEG2321', 0.19, 'y-coordinate')
+fig2, axes2 = sensor_signal_plot('dot_x', 'MEG2241', 0.17, 'x-coordinate')
+
+
+#%% compare grand average accumulated vs momentary evidence
+measure = 'mean'
+nperm = 2
+
+a_times = np.r_[120, 170, 240, 330, 400, 490, 580] - accev_off
+
+cols = dict(accev='C4', dot_x='k')
+labels = dict(accev='accumulated', dot_x='momentary')
+
+fig = plt.figure(figsize=(5, 4.5))
+ax = plt.subplot(2, 1, 1)
+
+for perm in range(1, nperm+1):
+    values = second_level.xs(perm)[(measure, 'dot_x')].abs().mean(level='time')
+    perml, = ax.plot(values.index, values.values, ':', 
+                     color=cols['dot_x'], lw=1, alpha=0.3)
     
-    return fig
+    values = second_level.xs(perm)[(measure, 'accev')].abs().mean(level='time')
+    perml, = ax.plot(values.index + accev_off, values.values, ':', 
+                     color=cols['accev'], lw=1)
+
+values = second_level.xs(0)[(measure, 'accev')].abs().mean(level='time')
+al, = ax.plot(values.index + accev_off, values.values, 
+              color=cols['accev'], lw=2, alpha=1)
+
+markers, = ax.plot(a_times + accev_off, values.loc[a_times], '.k', ms=10)
+
+values = second_level.xs(0)[(measure, 'dot_x')].abs().mean(level='time')
+xl, = ax.plot(values.index, values.values, 
+              color=cols['dot_x'], lw=2, alpha=0.3)
+
+ax.set_title('evidence', fontdict={'fontsize': 12})
+ax.set_xlabel('time from dot onset (ms)')
+ax.set_ylabel(r'mean magnitude of grand average $\beta$')
+
+ax.legend([xl, al, perml], [labels['dot_x'], labels['accev'], 'permuted'])
+
+ax.set_xlim(0, 690)
 
 
-fig = sensor_signal_plot('dot_y', 'MEG2321', 0.19, 'y-coordinate')
-fig2 = sensor_signal_plot('dot_x', 'MEG2241', 0.17, 'x-coordinate')
+T = len(a_times)
+at_axes = [plt.subplot(2, T, T+p+1) for p in range(T)]
 
+values = second_level.xs(0)[(measure, 'accev')]
+ev = mne.EvokedArray(
+        accev_sign * values.values.reshape(102, values.index.levels[1].size), 
+        evoked.info, nave=480*5, 
+        tmin=values.index.levels[1][0] + accev_off / 1000)
+
+ev.plot_topomap((a_times + accev_off) / 1000, scalings=1, vmin=vmin, vmax=vmax, 
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='beta', outlines='skirt', axes=at_axes, colorbar=False);
+                
+                
+ax.set_position([0.17, 0.35, 0.8, 0.59])
+
+for tax in at_axes:
+    bbox = tax.get_position(True)
+    tax.set_position([bbox.x0, -0.12, bbox.width, bbox.height], 
+                     which='original')
+    
+fig.savefig(os.path.join(figdir, 'accev_sensor_absmean.png'))
+
+
+#%% compare accumulated evidence vs. dot_x in one sensor
+channel = 'MEG0731'
+showtime = 0.12
+
+xl = [100, 690]
+
+fig, axes = plt.subplots(2, 2)
+
+sensor_signal_plot('accev', channel, showtime, '', axes[0, :]);
+sensor_signal_plot('dot_x', channel, showtime, '', axes[1, :]);
+
+axes[0, 1].set_xlim(*xl)
+axes[1, 1].set_xlim(*xl)
+
+axes[0, 1].set_title(channel)
+
+axes[0, 0].set_position([0.08, 0.6, 0.15, 0.3])
+axes[1, 0].set_position([0.08, 0.16, 0.15, 0.3])
+axes[0, 1].set_position([0.36, 0.55, 0.6, 0.38])
+axes[1, 1].set_position([0.36, 0.11, 0.6, 0.38])
+
+axes[0, 1].set_xlabel('')
+axes[0, 1].set_xticklabels([])
+
+axes[1, 1].legend_.remove()
+
+fig.text(0.02, 0.19, 'x-coordinate', rotation='vertical', va='bottom', 
+         ha='left', size='x-large')
+fig.text(0.02, 0.64, 'accumulated', rotation='vertical', va='bottom', 
+         ha='left', size='x-large')
+
+fig.savefig(os.path.join(figdir, 'accev_x_%s.png' % channel))
