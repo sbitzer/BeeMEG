@@ -177,12 +177,26 @@ for perm in range(nperm+1):
             epochs = store.select(epname, 'subject=sub').loc[sub]
         gc.collect()
         
+        epochs = epochs[labels]
+        
         epochs[:] = epochs.values[permutation.flatten(), :]
         
         # set data too close to RT to nan so it can be later easily excluded
         for tr in trials:
             epochs.loc[(tr, slice(rts.loc[(sub, tr)] + toolate + 1e-6, None)), 
                        epochs.columns[0]] = np.nan
+        
+        # compute within-trial 100 ms baseline for each presented dot, i.e.,
+        # starting with dot 2 from -100 ms to -10 ms from dot onset
+        ep_bls = pd.DataFrame(
+                [], dtype=float, index=pd.MultiIndex.from_product(
+                        [trials, dots[1:]], names=['trial', 'dot']), 
+                columns=labels)
+        for dot in dots[1:]:
+            donset = (dot - 1) * int(helpers.dotdt * 1000)
+            ep_bls.loc[(slice(None), dot), :] = epochs.loc[
+                    (slice(None), slice(donset-100, donset-10)), :].groupby(
+                    'trial').mean().values
         
         # setup output
         correlations = pd.DataFrame(
@@ -217,7 +231,7 @@ for perm in range(nperm+1):
                 data.dropna(inplace=True)
                 
                 corrs = pearson_cross_correlate(
-                        data['seed'][labels], data['cmp'][labels])
+                        data['seed'], data['cmp'])
                 correlations.loc[
                         (perm, sub, seedt, delay, slice(None)), :] = corrs
         print('')
