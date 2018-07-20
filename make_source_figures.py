@@ -21,6 +21,8 @@ import os
 import matplotlib.pyplot as plt
 import source_statistics as ss
 
+import scipy.stats
+
 figdir = helpers.figdir
 
 
@@ -82,14 +84,16 @@ first_level = pd.read_hdf(os.path.join(helpers.resultsdir, basefile),
 
 
 #%% helper plotting function
-def plot_single_source_signal(r_name, label, ax, t_off=0, t_slice=None):
+def plot_single_source_signal(r_name, label, ax, t_off=0, t_slice=None,
+                              sign=1, color='k', measure='mean'):
     if t_slice is None:
         t_slice = slice(None)
-    dat = first_level.loc[(0, label, t_slice), 
-                      (slice(None), 'beta', r_name)]
+    dat = sign * first_level.loc[(0, label, t_slice), 
+                                 (slice(None), 'beta', r_name)]
     times = dat.index.get_level_values('time') + t_off
     
-    l = ax.plot(times, dat, color='.7', lw=1, label='single subjects')
+    l = ax.plot(times, dat, color=color, alpha=0.1, lw=1, 
+                label='single subjects')
     
     if measure == 'mu_mean':
         # get mean beta of folded normal mixture
@@ -98,9 +102,9 @@ def plot_single_source_signal(r_name, label, ax, t_off=0, t_slice=None):
         
         mean_beta = dat_theta * dat_mu - (1 - dat_theta) * dat_mu
     else:
-        mean_beta = second_level.loc[(label, t_slice), (measure, r_name)]
+        mean_beta = sign * second_level.loc[(label, t_slice), (measure, r_name)]
     
-    l1, = ax.plot(times, mean_beta, 'k', lw=2, label='mean')
+    l1, = ax.plot(times, mean_beta, color=color, lw=2, label='mean')
     
     return l[0], l1
 
@@ -286,7 +290,7 @@ fig.savefig(os.path.join(figdir, 'av_mu_mean_source_accev.png'),
 
 
 #%% example time courses for accev
-labels = ['R_v23ab_ROI-rh', 'R_4_ROI-rh']
+labels = ['L_v23ab_ROI-lh', 'R_v23ab_ROI-rh', 'L_4_ROI-lh']
 
 fig, axes = plt.subplots(1, len(labels), sharex=True, sharey=True, 
                          figsize=[7.5, 3])
@@ -318,6 +322,51 @@ fig.subplots_adjust(left=0.1, bottom=0.18, right=0.97)
 fig.savefig(os.path.join(figdir, 'example_area_tcs_accev.png'), 
             dpi=300)
 
+
+#%% compare example time courses for dot_x and accev
+area = 'AIP'
+showme = 'tval'
+
+fig, axes = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(7.5, 3))
+
+accev_off = 100
+accev_sign = -1
+
+cols = dict(dot_x='C0', accev='C1')
+
+alpha = 0.01
+tsig = scipy.stats.t.ppf(alpha/2, first_level.columns.levels[0].size - 1)
+
+for ax, hemi in zip(axes, ['L', 'R']):
+    label = '%s_%s_ROI-%sh' % (hemi, area, hemi.lower())
+    
+    data = second_level.loc[label, (showme, 'dot_x')]
+    l1, = ax.plot(data.index, data, lw=2, color=cols['dot_x'])
+    
+    data = accev_sign * second_level.loc[label, (showme, 'accev')]
+    l2, = ax.plot(data.index + accev_off, data, lw=2, color=cols['accev'])
+    
+    xl = ax.get_xlim()
+    ax.fill_between(xl, tsig * np.ones(2), -tsig * np.ones(2), color='0.9',
+                    alpha=0.8, zorder=10)
+    ax.plot(xl, np.r_[0, 0], ':k')
+    ax.set_xlabel('time from dot onset (ms)')
+    ax.set_title('%s-%s' % (hemi, area))
+
+axes[0].set_ylabel('t-values')
+axes[0].set_xlim(100, 600)
+
+xl = axes[0].get_xlim()
+yl = axes[0].get_ylim()
+axes[0].text(xl[1] - 20, yl[0] + 0.3, 'p < %4.2f' % alpha, va='bottom', 
+             ha='right')
+axes[0].text(xl[1] - 20, tsig + 0.3, 'p > %4.2f' % alpha, va='bottom', 
+             ha='right')
+
+axes[1].legend((l1, l2), ['momentary', 'accumulated'])
+
+fig.tight_layout()
+    
 
 #%% source effects for response over time
 fig, axes = plt.subplots(1, 2, sharex=True, figsize=(7.5, 3))
