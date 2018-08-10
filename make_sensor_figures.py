@@ -25,6 +25,13 @@ import scipy.stats
 # label_tc normalised across trials but within times and subjects
 resfile = 'meg_sequential_201802061518.h5'
 
+# baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [0, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, sum_dot_x without dot_x, sum_dot_y_prev, percupt, 
+# constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+#resfile = 'meg_sequential_201808091710.h5'
+
 resfile = os.path.join(helpers.resultsdir, resfile)
 
 figdir = helpers.figdir
@@ -379,3 +386,51 @@ fig.text(0.02, 0.64, 'accumulated', rotation='vertical', va='bottom',
          ha='left', size='x-large')
 
 fig.savefig(os.path.join(figdir, 'accev_x_%s.png' % channel))
+
+
+#%% compare grand average of accev and sum_dot_x from different regressions
+files = {'accev': 'meg_sequential_201802061518.h5',
+         'sum_dot_x': 'meg_sequential_201808091710.h5'}
+
+measure = 'mean'
+nperm = 3
+cols = {'accev': 'C4', 'sum_dot_x': 'C2'}
+lws = {'accev': 2, 'sum_dot_x': 2}
+labels = {'accev': 'up to previous', 'sum_dot_x': 'up to current'}
+
+sx_times = np.r_[20, 80, 120, 180, 320]
+
+fig = plt.figure(figsize=(5, 4.5))
+ax = plt.subplot(2, 1, 1)
+
+for reg in ['accev', 'sum_dot_x']:
+    sl = pd.read_hdf(os.path.join(helpers.resultsdir, files[reg]), 
+                     'second_level')
+    
+    off = 0 if reg == 'sum_dot_x' else accev_off
+    
+    for perm in range(1, nperm+1):
+        values = sl.xs(perm)[(measure, reg)].abs().mean(level='time')
+        perml, = ax.plot(values.index + off, values.values, ':', 
+                         color=cols[reg], lw=lws[reg], alpha=0.3)
+
+    values = sl.xs(0)[(measure, reg)].abs().mean(level='time')
+    al, = ax.plot(values.index + off, values.values, color=cols[reg], 
+                  lw=lws[reg], alpha=1, label=labels[reg])
+    
+    if reg == 'sum_dot_x':
+        values = second_level.xs(0)[(measure, reg)]
+        ev = mne.EvokedArray(
+                values.values.reshape(102, values.index.levels[1].size), 
+                evoked.info, nave=480*5, 
+                tmin=values.index.levels[1][0] / 1000)
+    
+ax.set_xlim(0, 690)
+ax.legend()
+
+T = len(sx_times)
+sx_axes = [plt.subplot(2, T, T+p+1) for p in range(T)]
+
+ev.plot_topomap(sx_times / 1000, scalings=1, vmin=vmin, vmax=vmax, 
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='beta', outlines='skirt', axes=sx_axes, colorbar=False);

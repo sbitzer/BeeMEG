@@ -32,7 +32,7 @@ mindata = 30
 
 # names of regressors that should enter the GLM
 r_names = ['percupt_x', 'percupt_y', 'abs_dot_y', 'abs_dot_x', 'dot_y', 
-           'dot_x', 'intercept', 'accev', 'sum_dot_y_prev']
+           'sum_dot_x', 'intercept', 'sum_dot_y_prev']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
@@ -59,8 +59,8 @@ trialregs_dot = 0
 # 700 ms as right edge of the dot onset aligned time window, dots 1-25 could
 # enter the analysis
 # note that normalisation of data is still over all times in srcfile
-#timeslice = [0, 690]
-timeslice = [250, 600]
+timeslice = [0, 690]
+#timeslice = [250, 600]
 
 # How many permutations should be computed?
 nperm = 3
@@ -104,17 +104,17 @@ normDM = 'local'
 normdata = 'trials'
 
 # data to use, 'meg' for MEG channels, 'source' for sources
-datatype = 'source'
+datatype = 'meg'
 
 if datatype == 'meg':
     sfreq = 100
-    megtype = False
-    eog = True
+    megtype = 'mag'
+    eog = False
     bl = (-0.3, 0)
     window = [0, 2.5]
     
     srcfile = helpers.create_meg_epochs_hdf(sfreq, sfreq, window, megtype, bl,
-                                            filt_freqs=2, eog=eog)
+                                            filt_freqs=None, eog=eog)
     epname = 'epochs'
     
 elif datatype == 'source':
