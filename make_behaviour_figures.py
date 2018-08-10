@@ -15,6 +15,7 @@ import matplotlib.lines as mlines
 import pandas as pd
 import numpy as np
 import os
+import scipy.stats
 
 figdir = helpers.figdir
 
@@ -86,6 +87,21 @@ for title, coord, ax in zip(['evidence: x-coordinate', 'control: y-coordinate'],
     correlations = pd.concat([get_corrs(name) for name in r_names[:2]],
                              keys=['momentary', 'accumulated'], 
                              names=[coord, 'dot'], axis=1)
+    
+    ttdots = [4, 5]
+    tres = scipy.stats.ttest_rel(
+            correlations['momentary'][ttdots[0]], 
+            correlations['momentary'][ttdots[1]])
+    print('paired t-test dot {:d} vs. dot {:d}: t({})={:5.2f}, p={}'.format(
+            *ttdots, correlations.shape[0] - 1, tres.statistic, tres.pvalue))
+    fres = scipy.stats.f_oneway(
+            *[correlations['momentary'][col] 
+              for col in correlations['momentary'].columns])
+    ngroup = correlations['momentary'].columns.size
+    print('ANOVA for {}: F({}, {})={:5.2f}, p={}'.format(
+            coord, ngroup - 1, correlations['momentary'].size - ngroup, 
+            fres.statistic, fres.pvalue))
+    
     correlations = correlations.stack().stack().reset_index()
     
     sns.stripplot('dot', 0, coord, data=correlations, jitter=True, 
