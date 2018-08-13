@@ -17,7 +17,7 @@ if sys.version_info < (3,):
     from surfer import Brain
     import source_visualisations as sv
 
-figdir = sv.fig_dir
+    figdir = sv.fig_dir
 
 
 #%% load source-level results
