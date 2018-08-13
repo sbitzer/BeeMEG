@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import mne
 import source_statistics as ss
 import scipy.stats
+import statsmodels.api as sm
 
 # baseline (-0.3, 0), only first 3 dots, trialregs_dot=3, 
 # choice flipped dot_x and accev, move_dist, sum_dot_y, constregs=0 for 1st dot
@@ -434,3 +435,52 @@ sx_axes = [plt.subplot(2, T, T+p+1) for p in range(T)]
 ev.plot_topomap(sx_times / 1000, scalings=1, vmin=vmin, vmax=vmax, 
                 image_interp='nearest', sensors=False, time_unit='ms',
                 units='beta', outlines='skirt', axes=sx_axes, colorbar=False);
+                
+                
+#%% try to explain grand average sum_dot_x as combination of current and 
+# previous dot_x
+measure = 'mean'
+# set to None for checking the grand average magnitudes
+#channel = 'MEG0731'
+channel = None
+
+files = {'dot_x': 'meg_sequential_201802061518.h5',
+         'sum_dot_x': 'meg_sequential_201808091710.h5'}
+
+npre = 2
+xcols = plt.cm.Greens_r(np.linspace(0.1, 0.6, npre+1))
+
+sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['dot_x']), 
+                 'second_level')
+if channel is None:
+    xmags = sl.xs(0)[(measure, 'dot_x')].abs().mean(level='time')
+else:
+    xmags = sl.xs(0).loc[channel, (measure, 'dot_x')]
+xmags = pd.DataFrame(xmags.values, index=xmags.index, columns=[0])
+for pre in range(1, npre+1):
+    xmagsprev = pd.DataFrame(xmags.loc[slice(pre * 100, None), 0].values, 
+                             index=np.arange(0, 700 - pre * 100, 10), 
+                             columns=[-pre])
+    xmags[-pre] = xmagsprev
+del xmagsprev
+xmags.fillna(0, inplace=True)
+
+# load sum_dot_x as accumulated evidence
+sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['sum_dot_x']), 
+                 'second_level')
+if channel is None:
+    amags = sl.xs(0)[(measure, 'sum_dot_x')].abs().mean(level='time')
+else:
+    amags = sl.xs(0).loc[channel, (measure, 'sum_dot_x')]
+
+res = sm.OLS(amags.values, xmags.values).fit()
+
+# show fit
+fig, ax = plt.subplots()
+
+ax.plot(amags.index, amags, lw=3, zorder=10)
+for i, x in enumerate(xmags.columns):
+    ax.plot(xmags.index, xmags[x], lw=2, color=xcols[i], alpha=0.5)
+#    ax.plot(xmags.index, res.params[i] * xmags[x], lw=1, color=xcols[i])
+
+#ax.plot(xmags.index, np.dot(xmags, res.params), lw=2, color='C2')
