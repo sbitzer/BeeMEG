@@ -374,6 +374,72 @@ for tax in at_axes:
 fig.savefig(os.path.join(figdir, 'accev_sensor_absmean.png'))
 
 
+#%% compare topographies of accumulated and momentary evidence at 80 and 180 ms
+measure = 'mean'
+
+x_time = 180
+a_times = [80, 180]
+T = len(a_times) + 1
+
+
+fig = plt.figure()
+
+xvals = pd.read_hdf(os.path.join(helpers.resultsdir, 
+                    files['dot_x']), 'second_level').loc[
+                                 (0, slice(None), x_time), 
+                                 (measure, 'dot_x')]
+
+avals = pd.read_hdf(os.path.join(helpers.resultsdir, 
+                    files['sum_dot_x']), 'second_level').loc[
+                                 (0, slice(None), a_times), 
+                                 (measure, 'sum_dot_x')].unstack('time')
+
+# plot original topographies
+ev = mne.EvokedArray(
+        np.c_[xvals.values, avals[a_times].values], evoked.info, nave=480*5,
+        tmin=0)
+
+axes = [plt.subplot(2, T, p+1) for p in range(T)]
+
+ev.plot_topomap(np.arange(T) * 0.01, scalings=1, vmin=vmin, vmax=vmax, 
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='beta', outlines='skirt', axes=axes, colorbar=False);
+                
+# plot differences
+ev = mne.EvokedArray(
+        np.c_[avals[a_times].values - xvals.values[:, None]], evoked.info, 
+        nave=480*5, tmin=0)
+
+d_axes = [plt.subplot(2, T, T+p+2) for p in range(T-1)]
+
+ev.plot_topomap(np.arange(T-1) * 0.01, scalings=1, vmin=vmin, vmax=vmax, 
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='diff', outlines='skirt', axes=d_axes, colorbar=False);
+                
+# add annotations
+axes[0].set_title('%d ms' % x_time)
+for ax, dax, t in zip(axes[1:], d_axes, a_times):
+    ax.set_title('%d ms' % t)
+    dax.set_title('%d ms' % t)
+    
+for ax in axes:
+    bbox = ax.get_position(True)
+    ax.set_position([bbox.x0, 0.48, bbox.width, bbox.height], 
+                    which='original')
+
+for dax in d_axes:
+    bbox = dax.get_position(True)
+    dax.set_position([bbox.x0, -0.02, bbox.width, bbox.height], 
+                    which='original')
+
+fig.text(0.18, 0.93, 'momentary', fontsize=16, ha='center', va='bottom')
+fig.text(0.66, 0.93, 'accumulated', fontsize=16, ha='center', va='bottom')
+fig.text(0.66, 0.43, 'difference (acc. - mom.)', fontsize=16, ha='center', 
+         va='bottom')
+
+fig.savefig(os.path.join(figdir, 'accumulated_vs_momentary_topo_%d.png' % x_time))
+
+
 #%% compare accumulated evidence vs. dot_x in one sensor
 channel = 'MEG0731'
 showtime = 0.12
