@@ -33,6 +33,11 @@ resfile = 'meg_sequential_201802061518.h5'
 # label_tc normalised across trials but within times and subjects
 #resfile = 'meg_sequential_201808091710.h5'
 
+# should be chosen from the above, used for figures comparing momentary and
+# accumulated evidence using separate regressions using dot_x or sum_dot_x
+files = {'dot_x': 'meg_sequential_201802061518.h5',
+         'sum_dot_x': 'meg_sequential_201808091710.h5'}
+
 resfile = os.path.join(helpers.resultsdir, resfile)
 
 figdir = helpers.figdir
@@ -293,34 +298,47 @@ fig2, axes2 = sensor_signal_plot('dot_x', 'MEG2241', 0.17, 'x-coordinate')
 
 #%% compare grand average accumulated vs momentary evidence
 measure = 'mean'
-nperm = 2
+nperm = 3
+npre = 2
 
-a_times = np.r_[120, 170, 240, 330, 400, 490, 580] - accev_off
+a_times = np.r_[20, 80, 120, 180, 320, 400, 490]
 
-cols = dict(accev='C4', dot_x='k')
+cols = dict(accev='C0', 
+            dot_x=[str(c) for c in np.linspace(0.7, 0.9, npre + 1)])
 labels = dict(accev='accumulated', dot_x='momentary')
 
-fig = plt.figure(figsize=(5, 4.5))
+fig = plt.figure(figsize=(7, 4.5))
 ax = plt.subplot(2, 1, 1)
 
+# load x-correlations, produce time shifted versions and plot them with fill
+sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['dot_x']),
+                 'second_level')
+xmags = sl.xs(0)[(measure, 'dot_x')].abs().mean(level='time')
+xmags = pd.DataFrame(xmags.values, index=xmags.index, columns=[0])
+for pre in range(1, npre+1):
+    xmagsprev = pd.DataFrame(xmags.loc[slice(pre * 100, None), 0].values, 
+                             index=np.arange(0, 700 - pre * 100, 10), 
+                             columns=[-pre])
+    xmags[-pre] = xmagsprev
+del xmagsprev
+xmags.fillna(0, inplace=True)
+for i, x in enumerate(xmags.columns):
+    xl = ax.fill_between(xmags.index, xmags[x], color=cols['dot_x'][i], 
+                          alpha=0.9, zorder=x, label=labels['dot_x'])
+
+# load sum_dot_x and plot
+sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['sum_dot_x']),
+                 'second_level')
 for perm in range(1, nperm+1):
-    values = second_level.xs(perm)[(measure, 'dot_x')].abs().mean(level='time')
+    values = sl.xs(perm)[(measure, 'sum_dot_x')].abs().mean(level='time')
     perml, = ax.plot(values.index, values.values, ':', 
-                     color=cols['dot_x'], lw=1, alpha=0.3)
-    
-    values = second_level.xs(perm)[(measure, 'accev')].abs().mean(level='time')
-    perml, = ax.plot(values.index + accev_off, values.values, ':', 
-                     color=cols['accev'], lw=1)
+                     color=cols['accev'], lw=2, alpha=0.3, zorder=1)
 
-values = second_level.xs(0)[(measure, 'accev')].abs().mean(level='time')
-al, = ax.plot(values.index + accev_off, values.values, 
-              color=cols['accev'], lw=2, alpha=1)
+values = sl.xs(0)[(measure, 'sum_dot_x')].abs().mean(level='time')
+al, = ax.plot(values.index, values.values, 
+              color=cols['accev'], lw=3, alpha=1, zorder=2)
 
-markers, = ax.plot(a_times + accev_off, values.loc[a_times], '.k', ms=10)
-
-values = second_level.xs(0)[(measure, 'dot_x')].abs().mean(level='time')
-xl, = ax.plot(values.index, values.values, 
-              color=cols['dot_x'], lw=2, alpha=0.3)
+markers, = ax.plot(a_times, values.loc[a_times], '.k', ms=10)
 
 ax.set_title('evidence', fontdict={'fontsize': 12})
 ax.set_xlabel('time from dot onset (ms)')
@@ -329,27 +347,28 @@ ax.set_ylabel(r'mean magnitude of grand average $\beta$')
 ax.legend([xl, al, perml], [labels['dot_x'], labels['accev'], 'permuted'])
 
 ax.set_xlim(0, 690)
+ylim = ax.get_ylim()
+ax.set_ylim(0, ylim[1])
 
-
+# plot topographies
 T = len(a_times)
 at_axes = [plt.subplot(2, T, T+p+1) for p in range(T)]
 
-values = second_level.xs(0)[(measure, 'accev')]
+values = sl.xs(0)[(measure, 'sum_dot_x')]
 ev = mne.EvokedArray(
-        accev_sign * values.values.reshape(102, values.index.levels[1].size), 
+        values.values.reshape(102, values.index.levels[1].size), 
         evoked.info, nave=480*5, 
-        tmin=values.index.levels[1][0] + accev_off / 1000)
+        tmin=values.index.levels[1][0])
 
-ev.plot_topomap((a_times + accev_off) / 1000, scalings=1, vmin=vmin, vmax=vmax, 
+ev.plot_topomap(a_times / 1000, scalings=1, vmin=vmin, vmax=vmax, 
                 image_interp='nearest', sensors=False, time_unit='ms',
                 units='beta', outlines='skirt', axes=at_axes, colorbar=False);
-                
-                
-ax.set_position([0.17, 0.35, 0.8, 0.59])
 
+# tune axis positions
+ax.set_position([0.12, 0.38, 0.85, 0.56])
 for tax in at_axes:
     bbox = tax.get_position(True)
-    tax.set_position([bbox.x0, -0.12, bbox.width, bbox.height], 
+    tax.set_position([bbox.x0, -0.11, bbox.width, bbox.height], 
                      which='original')
     
 fig.savefig(os.path.join(figdir, 'accev_sensor_absmean.png'))
@@ -448,7 +467,8 @@ files = {'dot_x': 'meg_sequential_201802061518.h5',
          'sum_dot_x': 'meg_sequential_201808091710.h5'}
 
 npre = 2
-xcols = plt.cm.Greens_r(np.linspace(0.1, 0.6, npre+1))
+xcols = plt.cm.Greens_r(np.linspace(0.3, 0.7, npre+1))
+zorders = [3, 2, 1]
 
 sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['dot_x']), 
                  'second_level')
@@ -480,7 +500,8 @@ fig, ax = plt.subplots()
 
 ax.plot(amags.index, amags, lw=3, zorder=10)
 for i, x in enumerate(xmags.columns):
-    ax.plot(xmags.index, xmags[x], lw=2, color=xcols[i], alpha=0.5)
+    ax.fill_between(xmags.index, xmags[x], color=xcols[i], alpha=0.9, 
+                    zorder=zorders[i])
 #    ax.plot(xmags.index, res.params[i] * xmags[x], lw=1, color=xcols[i])
 
 #ax.plot(xmags.index, np.dot(xmags, res.params), lw=2, color='C2')
