@@ -104,7 +104,7 @@ normDM = 'local'
 normdata = 'trials'
 
 # data to use, 'meg' for MEG channels, 'source' for sources
-datatype = 'meg'
+datatype = 'source'
 
 if datatype == 'meg':
     sfreq = 100
@@ -125,7 +125,7 @@ elif datatype == 'source':
 #    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807021743.h5'
     
     # label mode = mean_flip, long epochs, HCPMMP_5_8, loose=0.2, normal ori
-#    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807041847.h5'
+    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807041847.h5'
     
     # label mode = mean
     #srcfile = 'source_epochs_allsubs_HCPMMP1_201708232002.h5'
@@ -149,7 +149,7 @@ elif datatype == 'source':
     # loose=0.2, normal ori
     # label mode = None, lselection=premotor, motor, mid cingulate, parietal
     # window = [-0.3, 2.5], no baseline correction before source reconstruction
-    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807051740.h5'
+#    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807051740.h5'
     
     if os.name == 'posix':
         srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
