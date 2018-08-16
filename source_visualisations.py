@@ -36,7 +36,7 @@ else:
     subjects_dir = os.path.expanduser('~\\BeeMEG\\mne_subjects')
 subject = 'fsaverage'
 bem_dir = os.path.join(subjects_dir, subject, 'bem')
-fig_dir = os.path.join(subjects_dir, subject, 'figures')
+fig_dir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 resultid_re = re.compile(r'.*_(\d{12})_.*.stc')
 
