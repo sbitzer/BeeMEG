@@ -204,10 +204,9 @@ if response_aligned:
         # the time level, because the response aligned times have different 
         # values than those stored in dot-onset aligned times)
         return pd.MultiIndex.from_arrays(
-                [np.full_like(rttime, sub),
-                 np.tile(np.arange(1, 481)[:, None], 
+                [np.tile(np.arange(1, 481)[:, None], 
                          (1, epochtimes.size)).flatten(),
-                 rttime], names=['subject', 'trial', 'time']).sort_values()
+                 rttime], names=['trial', 'time']).sort_values()
     
     if len(timeslice) != 2:
         raise ValueError("For response aligned times you need to provide the "
@@ -216,6 +215,9 @@ if response_aligned:
                      name='time')
 else:
     times = epochtimes[slice(*epochtimes.slice_locs(*timeslice))]
+
+# default index for epochs, used for reindexing below to select desired times
+index = pd.MultiIndex.from_product([trials, times], names=['trial', 'time'])
 
 
 #%% load trial-level design matrices for all subjects (ith-dot based)
@@ -344,7 +346,7 @@ for perm in range(1, nperm+1):
             
         # select desired times
         if len(timeslice) > 0:
-            epochs = epochs.loc[(slice(None), times), :].copy()
+            epochs = epochs.reindex(index)
             
         # permute by reordering rows according to sampled permutation
         epochs.loc[:] = epochs.values[permutation.flatten(), :]
