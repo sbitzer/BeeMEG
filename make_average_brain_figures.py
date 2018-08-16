@@ -16,78 +16,93 @@ import mne
 
 from surfer import Brain
 
-figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
+figdir = sv.fig_dir
 
 
 #%%
-# label mode = mean, baseline (-0.3, 0), first 5 dots, 
-# trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
-# subject-specific normalisation of DM without centering and scaling by std
-# label_tc normalised across trials, times and subjects
-#basefile = 'source_sequential_201709061827.h5'
+# regressor of interest
+#r_name = 'dot_x'
+r_name = 'dot_y'
 
-# label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
-# time window [0, 690], exclude time-outs, local normalisation of DM
-# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
-# label_tc normalised across trials, times and subjects
-#basefile = 'source_sequential_201801261754.h5'
-
-# label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
-# time window [0, 690], exclude time-outs, local normalisation of DM
-# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
-# label_tc normalised across trials but within times and subjects
-#basefile = 'source_sequential_201801291241.h5'
-
-# loose source orientations, but cortex normal currents
-# label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
-# time window [0, 690], exclude time-outs, local normalisation of DM
-# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
-# label_tc normalised across trials but within times and subjects
-basefile = 'source_sequential_201807041930.h5'
+if r_name == 'dot_x':
+    # label mode = mean, baseline (-0.3, 0), first 5 dots, 
+    # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
+    # subject-specific normalisation of DM without centering and scaling by std
+    # label_tc normalised across trials, times and subjects
+    #basefile = 'source_sequential_201709061827.h5'
+    
+    # label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
+    # time window [0, 690], exclude time-outs, local normalisation of DM
+    # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+    # label_tc normalised across trials, times and subjects
+    #basefile = 'source_sequential_201801261754.h5'
+    
+    # label mode = mean, baseline (-0.3, 0), all dots with toolate=-200, 
+    # time window [0, 690], exclude time-outs, local normalisation of DM
+    # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+    # label_tc normalised across trials but within times and subjects
+    #basefile = 'source_sequential_201801291241.h5'
+    
+    # loose source orientations, but cortex normal currents
+    # label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
+    # time window [0, 690], exclude time-outs, local normalisation of DM
+    # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+    # label_tc normalised across trials but within times and subjects
+    basefile = 'source_sequential_201807041930.h5'
+    
+    twins = {"early": [110, 130], 
+             "transition": [160, 200], 
+             "plateau": [300, 500]}
+    
+    fdr_alpha = 0.05
+    
+elif r_name == 'sum_dot_x':
+    # loose source orientations, but cortex normal currents
+    # label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
+    # time window [0, 690], exclude time-outs, local normalisation of DM
+    # trialregs_dot=0, sum_dot_x instead of dot_x and accev, sum_dot_y_prev, 
+    # percupt, constregs=0 for 1st dot, 
+    # label_tc normalised across trials but within times and subjects
+    basefile = 'source_sequential_201808131739.h5'
+    
+    twins = {"full": [0, 550]}
+    
+    fdr_alpha = 0.05
+    
+elif r_name == 'dot_y':
+    # loose source orientations, but cortex normal currents
+    # label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
+    # time window [0, 690], exclude time-outs, local normalisation of DM
+    # trialregs_dot=0, sum_dot_x instead of dot_x and accev, sum_dot_y_prev, 
+    # percupt, constregs=0 for 1st dot, 
+    # label_tc normalised across trials but within times and subjects
+    basefile = 'source_sequential_201808131739.h5'
+    
+    twins = {"one": [120, 220],
+             "two": [300, 400]}
+    
+    fdr_alpha = 0.05
 
 # newest results are based on this parcellation, cf. 'srcfile' in basefile
 parc = 'HCPMMP1_5_8'
 
-if basefile.startswith('source_sequential'):
-    regressors = ['dot_x', 'dot_y', 'accev', 'sum_dot_y_prev']
+show_measure = 'abstval'
+use_basefile = show_measure in ss.basefile_measures
 
-elif basefile.startswith('source_singledot'):
-    regressors = ['response']
-    
-fdr_alpha = 0.01
 
-clusters = ss.get_fdrcorr_clusters(basefile, regressors, fdr_alpha, 
+#%% load clusters of significant effects
+clusters = ss.get_fdrcorr_clusters(basefile, [r_name], fdr_alpha, 
                                    use_basefile=True)
 
-# save all significant dot_x clusters to csv-file
+
+#%% save all significant r_name clusters to csv-file
 def to_csv(areas, fname):
     areas['label'] = areas['label'].map(lambda x: x[:-7])
     areas.to_csv(fname)
     
-to_csv(clusters.loc['dot_x'].copy().sort_values('start_t')[
+to_csv(clusters.loc[r_name].copy().sort_values('start_t')[
         ['label', 'region', 'start_t', 'end_t', 'log10p']],
-       os.path.join(figdir, 'significant_clusters.csv'))
-
-
-#%% find those areas which have at least one significant cluster within time
-# period of interest
-show_measure = 'tval'
-use_basefile = show_measure in ss.basefile_measures
-
-r_name = 'dot_x'
-twin = [300, 500]
-
-#r_name = 'accev'
-#twin = [50, 70]
-
-winclusters = clusters.loc[r_name]
-winclusters = winclusters[
-         ((winclusters.start_t >= twin[0]) 
-        & (winclusters.start_t <= twin[1])) 
-        | ((winclusters.end_t >= twin[0]) 
-        & (winclusters.end_t <= twin[1]))]
-
-areas = winclusters.label.unique()
+       os.path.join(figdir, 'significant_clusters_{}.csv'.format(r_name)))
 
 
 #%%
@@ -97,55 +112,78 @@ if show_measure not in src_df.columns:
     ss.add_measure(src_df, show_measure)
 
 labels = src_df.index.levels[0]
-avsrcdf = pd.DataFrame(np.zeros((labels.size, src_df.shape[1])),
-                       index=pd.MultiIndex.from_product(
-                               [labels, [int(np.mean(twin))]],
-                               names=['label', 'time']),
-                       columns=src_df.columns)
+
+
+def get_average_effects(twin, wname, top=5):
+    winclusters = clusters.loc[r_name]
+    winclusters = winclusters[
+             ((winclusters.start_t >= twin[0]) 
+            & (winclusters.start_t <= twin[1])) 
+            | ((winclusters.end_t >= twin[0]) 
+            & (winclusters.end_t <= twin[1]))]
+    areas = winclusters.label.unique()
     
-avsrcdf.loc[list(areas), :] = src_df.loc[
-        (list(areas), slice(*twin)), :].groupby('label').mean().values
-
-times = avsrcdf.index.levels[1]
-
-avcsv = avsrcdf[avsrcdf.tval != 0].copy().xs(int(np.mean(twin)), level='time')
-avcsv['region'] = avcsv.index.map(ss.get_Glasser_section)
-to_csv(avcsv.reset_index()[
-        ['label', 'region', 'mlog10p', 'tval', 'mean', 'std']].sort_values(
-        'mlog10p', ascending=False),
-       os.path.join(figdir, 'average_significant_%d-%d.csv' % (
-               twin[0], twin[1])))
-
-
-#%% print areas with largest effects
-toplabels = {}
-for hemi in ['L', 'R']:
-    ind = avsrcdf.index.get_level_values('label').map(
-            lambda x: x.startswith(hemi))
+    time = int(np.mean(twin))
     
-    print('\nhemi: ' + hemi)
-    avtop = avsrcdf[ind].abs().sort_values('tval', ascending=False).head(5)
-    print(avtop)
+    avsrcdf = pd.DataFrame(np.zeros((labels.size, src_df.shape[1])),
+                           index=pd.MultiIndex.from_product(
+                                   [labels, [time]],
+                                   names=['label', 'time']),
+                           columns=src_df.columns)
+        
+    avsrcdf.loc[list(areas), :] = src_df.loc[
+            (list(areas), slice(*twin)), :].groupby('label').mean().values
     
-    toplabels[hemi.lower() + 'h'] = list(
-            avtop.xs(times[0], level='time').index)
+    # save computed values in csv
+    avcsv = avsrcdf[avsrcdf.tval != 0].copy().xs(time, level='time')
+    avcsv['region'] = avcsv.index.map(ss.get_Glasser_section)
+    avcsv = avcsv.reset_index().sort_values(show_measure, ascending=False)
+    to_csv(avcsv[['label', 'region', 'mlog10p', 'tval', 'mean', 'std']],
+           os.path.join(figdir, 'average_significant_%s_%s.csv' % (
+                   r_name, wname)))
+    
+    # areas with largest effects
+    toplabels = {}
+    for hemi in ['L', 'R']:
+        ind = avsrcdf.index.get_level_values('label').map(
+                lambda x: x.startswith(hemi))
+        
+        avtop = avsrcdf[ind].abs().sort_values(
+                show_measure, ascending=False).head(top)
+        avtop = avtop[avtop[show_measure] != 0]
+        
+        toplabels[hemi.lower() + 'h'] = list(
+                avtop.xs(time, level='time').index)
+    
+    return avsrcdf, time, toplabels
 
 
-#%% 
-colorinfo = {'fmin': avsrcdf.loc[list(areas), show_measure].abs().min(),
-             'fmid': avsrcdf.loc[list(areas), show_measure].abs().median(), 
-             'fmax': avsrcdf.loc[list(areas), show_measure].abs().max(), 
+#%% compute all results so that you can determine a common colour scale
+results = {}
+for name, win in twins.items():
+    avsrcdf, time, toplabels = get_average_effects(win, name)
+    results[name] = dict(avsrcdf=avsrcdf, time=time, toplabels=toplabels)
+
+avsrcdf = pd.concat([results[name]['avsrcdf'] for name in twins.keys()])
+avsrcdf = avsrcdf[avsrcdf[show_measure] != 0]
+
+colorinfo = {'fmin': avsrcdf[show_measure].abs().min(),
+             'fmid': avsrcdf[show_measure].abs().median(), 
+             'fmax': avsrcdf[show_measure].abs().max(), 
              'transparent': True,
-             'center': 0,
              'colormap': 'auto'}
 
         
 #%% make helper plotting function
-filepat_base = 'av_brain_' + show_measure
+filepat_base = 'av_brain_{}_{}'.format(r_name, show_measure)
 
-def brain_plot(brain, toplabels=None):
-    views = {'rh': ['medial', 'lateral'], #{'azimuth': -20, 'elevation': 62, 'roll': -68}], 
-             'lh': ['lateral', 'medial']}
+def brain_plot(brain, wname, toplabels=False, save=False):
+    if r_name in ['dot_x', 'dot_y']:
+        views = {'rh': ['medial', 'parietal'], #{'azimuth': -20, 'elevation': 62, 'roll': -68}], 
+                 'lh': ['parietal', 'medial']}
+    elif r_name == 'sum_dot_x':
+        views = {'rh': ['medial', 'lateral'],
+                 'lh': ['lateral', 'medial']}
     
     if type(brain) is str:
         hemi = brain
@@ -155,14 +193,16 @@ def brain_plot(brain, toplabels=None):
     else:
         hemi = brain.geo.keys()[0]
         
-    sv.show_labels_as_data(avsrcdf, show_measure, brain, time_label=None, 
-                           parc=parc, **colorinfo)
+    sv.show_labels_as_data(results[wname]['avsrcdf'], show_measure, brain, 
+                           time_label=None, parc=parc, **colorinfo)
     
-    if toplabels is not None:
+    if toplabels:
+        brain.remove_labels()
+        
         alllabels = mne.read_labels_from_annot(
                 'fsaverage', parc=parc, hemi=hemi)
         for label in alllabels:
-            if label.name in toplabels[hemi]:
+            if label.name in results[wname]['toplabels'][hemi]:
                 brain.add_label(label, borders=1, hemi=hemi, alpha=0.8, 
                                 color='k')
     
@@ -172,29 +212,42 @@ def brain_plot(brain, toplabels=None):
     brain.data['colorbar'].scalar_bar_representation.position = [0.075, 0.01]
     brain.data['colorbar'].scalar_bar_representation.position2 = [0.85, 0.12]
     
-    filepat = os.path.join(figdir, filepat_base + '_{}_{}.png'.format(
-            hemi, r_name))
-    
-    brain.save_montage(filepat, views[hemi], colorbar=0)
+    if save:
+        filepat = os.path.join(figdir, filepat_base + '_{}_{}.png'.format(
+                wname, hemi))
+        
+        brain.save_montage(filepat, views[hemi], colorbar=0)
     
     return brain
 
 
 #%%
-hemi = 'lh'
-brain = brain_plot(hemi, toplabels)
+interactive = False
+show_toplabels = True
+
+if interactive:
+    hemi = 'rh'
+    wname = 'full'
+    brain = brain_plot(hemi, wname, show_toplabels)
+else:
+    for hemi in ['lh', 'rh']:
+        first = True
+        for wname in twins.keys():
+            if first:
+                brain = brain_plot(hemi, wname, show_toplabels, True)
+            else:
+                brain_plot(brain, wname, show_toplabels, True)
+            
+        brain.close()
+
 
 #%% stitch images from different hemispheres together
-infiles = []
-for time in times:
-    time_idx = times.get_loc(time)
-    infiles += [
-            os.path.join(figdir, 
-                         filepat_base + '_{}_{}.png'.format(
-                                 'lh', r_name)),
-            os.path.join(figdir, 
-                         filepat_base + '_{}_{}.png'.format(
-                                 'rh', r_name))]
-outfile = os.path.join(figdir, filepat_base + '_{}.png'.format(r_name))
-os.system("montage -tile 2x1 -geometry +0+0 {} {}".format(
-        ' '.join(infiles), outfile))
+if not interactive:
+    for wname in twins.keys():
+        infiles = [
+                os.path.join(figdir, 
+                             filepat_base + '_{}_{}.png'.format(wname, hemi))
+                for hemi in ['lh', 'rh']]
+        outfile = os.path.join(figdir, filepat_base + '_{}.png'.format(wname))
+        os.system("montage -tile 2x1 -geometry +0+0 {} {}".format(
+                ' '.join(infiles), outfile))
