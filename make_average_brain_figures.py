@@ -21,8 +21,7 @@ figdir = sv.fig_dir
 
 #%%
 # regressor of interest
-#r_name = 'dot_x'
-r_name = 'dot_y'
+r_name = 'dot_x_sign'
 
 if r_name == 'dot_x':
     # label mode = mean, baseline (-0.3, 0), first 5 dots, 
@@ -80,6 +79,21 @@ elif r_name == 'dot_y':
     
     twins = {"one": [120, 220],
              "two": [300, 400]}
+    
+    fdr_alpha = 0.05
+
+elif r_name == 'dot_x_sign':
+    # loose source orientations, but cortex normal currents
+    # label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
+    # time window [0, 690], exclude time-outs, local normalisation of DM
+    # trialregs_dot=0, dot_x_sign, accev_sign, sum_dot_y_prev, 
+    # percupt, constregs=0 for 1st dot, 
+    # label_tc normalised across trials but within times and subjects
+    basefile = 'source_sequential_201808161156.h5'
+    
+    twins = {"early": [110, 130], 
+             "transition": [160, 200], 
+             "plateau": [300, 500]}
     
     fdr_alpha = 0.05
 
@@ -178,7 +192,7 @@ colorinfo = {'fmin': avsrcdf[show_measure].abs().min(),
 filepat_base = 'av_brain_{}_{}'.format(r_name, show_measure)
 
 def brain_plot(brain, wname, toplabels=False, save=False):
-    if r_name in ['dot_x', 'dot_y']:
+    if r_name in ['dot_x', 'dot_y', 'dot_x_sign']:
         views = {'rh': ['medial', 'parietal'], #{'azimuth': -20, 'elevation': 62, 'roll': -68}], 
                  'lh': ['parietal', 'medial']}
     elif r_name == 'sum_dot_x':

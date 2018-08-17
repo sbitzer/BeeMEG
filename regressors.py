@@ -41,10 +41,18 @@ trial_dot = pd.DataFrame([], index=pd.MultiIndex.from_product([triali, doti],
 trial_dot['dot_x'] = dotpos[:, 0, :].flatten('F')
 trial_dot['dot_y'] = dotpos[:, 1, :].flatten('F')
 
+# sign of dot pos
+trial_dot['dot_x_sign'] = np.sign(trial_dot['dot_x'])
+trial_dot['dot_y_sign'] = np.sign(trial_dot['dot_y'])
+
 # summed dotpos, is proportional to summed log-likelihood ratio for dot_x, 
 # for both x and y it's also a measure of the mean position within the trial
 trial_dot['sum_dot_x'] = dotpos[:, 0, :].cumsum(axis=0).flatten('F')
 trial_dot['sum_dot_y'] = dotpos[:, 1, :].cumsum(axis=0).flatten('F')
+
+# sign of summed dotpos
+trial_dot['sum_dot_x_sign'] = np.sign(trial_dot['sum_dot_x'])
+trial_dot['sum_dot_y_sign'] = np.sign(trial_dot['sum_dot_y'])
 
 # summed dotpos up to the previous dot
 trial_dot['sum_dot_x_prev'] = np.zeros(trial_dot.shape[0])
@@ -53,6 +61,10 @@ trial_dot.loc[(slice(None), slice(2, 25)), 'sum_dot_x_prev'] = \
 trial_dot['sum_dot_y_prev'] = np.zeros(trial_dot.shape[0])
 trial_dot.loc[(slice(None), slice(2, 25)), 'sum_dot_y_prev'] = \
     trial_dot.loc[(slice(None), slice(1, 24)), 'sum_dot_y'].values
+
+# sign of summed dotpos up to the previous dot
+trial_dot['sum_dot_x_prev_sign'] = np.sign(trial_dot['sum_dot_x_prev'])
+trial_dot['sum_dot_y_prev_sign'] = np.sign(trial_dot['sum_dot_y_prev'])
 
 # distance to center of screen
 trial_dot['dot_dist'] = np.sqrt(trial_dot.dot_x ** 2 + trial_dot.dot_y ** 2)
@@ -210,6 +222,9 @@ for sub in subjecti:
             np.log(subject.prior[sub]) - np.log(1 - subject.prior[sub]) )
 subject_trial_dot.loc[(slice(None), slice(None), slice(2, None)), 'accev'] = \
         subject_trial_dot.loc[(slice(None), slice(None), slice(1, 24)), 'lpr'].values
+
+# sign of accev
+subject_trial_dot['accev_sign'] = np.sign(subject_trial_dot['accev'])
 
 # accumulated evidence Gram-Schmidt orthogonalised with respect to the 
 # x-position of the corresponding dot

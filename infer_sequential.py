@@ -31,8 +31,8 @@ exclude_to = True
 mindata = 30
 
 # names of regressors that should enter the GLM
-r_names = ['percupt_x', 'percupt_y', 'abs_dot_y', 'abs_dot_x', 'dot_y', 
-           'sum_dot_x', 'intercept', 'sum_dot_y_prev']
+r_names = ['percupt_x', 'percupt_y', 'abs_dot_y', 'abs_dot_x', 'dot_y',
+            'dot_x_sign', 'accev_sign', 'intercept', 'sum_dot_y_prev']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
