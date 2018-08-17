@@ -12,10 +12,11 @@ import os
 
 hemi = 'lh'
 
+# these figures were generated with show_motor_vertices.py
 regfig = os.path.join(
-        helpers.figdir, 'motor_vertices_dot_x_tval_%s_490_exclate.png' % hemi)
+        helpers.figdir, 'motor_vertices_dot_x_abstval_%s_480_exclate.png' % hemi)
 evfig = os.path.join(
-        helpers.figdir, 'motor_vertices_evoked_tval_%s_30_evoked.png' % hemi)
+        helpers.figdir, 'motor_vertices_evoked_abstval_%s_30_evoked.png' % hemi)
 
 
 #%%
@@ -35,7 +36,7 @@ fig.text(0.25, 0.93, "response-aligned grand average", ha='center',
 fig.text(0.75, 0.93, r"dot onset aligned evidence correlation", 
          ha='center', fontsize=16)
 
-fig.text(0.5, 0.8, "p < 0.05\nFDR corrected", 
+fig.text(0.5, 0.8, "p < 0.01\nFDR corrected", 
          ha='center', fontsize=12, color='#909090')
 
 fig.savefig(os.path.join(helpers.figdir, 

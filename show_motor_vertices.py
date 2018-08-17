@@ -20,13 +20,16 @@ figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
 
 #%% load data
 r_name = 'dot_x'
-measure = 'tval'
-fdr_alpha = 0.05
+measure = 'abstval'
+fdr_alpha = 0.01
 
 # None for no figure and movie generation
 # otherwise a list of times for which figures should be generated
 # if more than one times is given, a movie will be created from the figures
-make_figures = [490]
+# if either 'max' or 'mean' is given then the time with the highest absolute
+# measure value across vertices (max) or the time with the highest mean measure
+# value across vertices (mean) will be chosen
+make_figures = 'max'
 
 # can be:
 # '' for all first-dot-onset-aligned data
@@ -67,14 +70,14 @@ else:
         # no baseline correction, toolate=-200, time window [250, 600]
         # local normalisation of DM, trial normalisation of data
         # x/y coordinates, absolutes, percupt, accev, sum_dot_y_prev
-        basefile = 'source_sequential_201803131115.h5'
+#        basefile = 'source_sequential_201803131115.h5'
         
         # source reconstruction with loose=0.2 and pick_ori='normal'
         # vertices of premotor, motor, paracentral and superior parietal
         # no baseline correction, toolate=-200, time window [250, 600]
         # local normalisation of DM, trial normalisation of data
         # x/y coordinates, absolutes, percupt, accev, sum_dot_y_prev
-        basefile = 'source_sequential_201807061103.h5.tmp'
+        basefile = 'source_sequential_201807061103.h5'
     elif datatype == '':
         # vertices of pre-motor and motor areas, baseline (-0.3, 0), first 5 dots, 
         # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
@@ -96,6 +99,13 @@ if len(datatype) > 0 and not datatype.startswith('_'):
 
 src_df = ss.load_src_df(basefile, r_name, use_basefile=True)
 ss.add_measure(src_df, 'p_fdr')
+if measure not in src_df.columns:
+    ss.add_measure(src_df, measure)
+    
+if make_figures == 'max':
+    make_figures = [src_df[measure].abs().groupby('time').max().idxmax()]
+elif make_figures == 'mean':
+    make_figures = [src_df[measure].abs().groupby('time').mean().idxmax()]
 
 #flips = sv.get_label_sign_flips(
 #        src_df.index.get_level_values('label').map(lambda s: s[:-7]).unique(),
