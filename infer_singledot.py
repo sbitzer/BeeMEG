@@ -178,36 +178,11 @@ gc.collect()
 
 #%% load rts and choices of subjects
 rts = subject_DM.regressors.subject_trial.RT.loc[subjects] * 1000
-
-# if RTs are an exact multiple of 5, numpy will round both 10+5 and 20+5 to
-# 20; so to not get duplicate times add a small jitter
-fives = (np.mod(rts, 10) != 0) & (np.mod(rts, 5) == 0)
-# subtracting the small amount means that the new times will be rounded
-# down so that e.g., -5 becomes 0, I prefer that round because then there
-# might be slightly more trials with larger times, but the effect is small
-rts[fives] = rts[fives] - 1e-7
-
 choices = subject_DM.regressors.subject_trial.response.loc[subjects]
 
 
 #%% figure out which time points to analyse
 if response_aligned:
-    def rtindex(sub):
-        """Returns index for data of a subject with time as difference to RT"""
-        
-        rttime = (  epochtimes.values[None, :] 
-                  - rts.loc[sub].values[:, None]).flatten()
-        # round to 10 ms and convert into integer
-        rttime = rttime.round(-1).astype(int)
-    
-        # create new subject-trial-time index (I cannot only set the labels of
-        # the time level, because the response aligned times have different 
-        # values than those stored in dot-onset aligned times)
-        return pd.MultiIndex.from_arrays(
-                [np.tile(np.arange(1, 481)[:, None], 
-                         (1, epochtimes.size)).flatten(),
-                 rttime], names=['trial', 'time']).sort_values()
-    
     if len(timeslice) != 2:
         raise ValueError("For response aligned times you need to provide the "
                          "start and stop of the time window!")
@@ -312,7 +287,7 @@ for perm in range(1, nperm+1):
     
     for sub in subjects:
         with pd.HDFStore(srcfile, 'r') as store:
-            epochs = store.select(epname, 'subject=sub').loc[sub]
+            epochs = store.select(epname, 'subject=sub')
         gc.collect()
         
         # normalise each label, if desired
@@ -330,19 +305,22 @@ for perm in range(1, nperm+1):
             ch_sub = choices.loc[sub]
             toind = ch_sub[ch_sub == helpers.toresponse[0]].index.values
             if toind.size > 0:
-                epochs.loc[toind, epochs.columns[0]] = np.nan
+                epochs.loc[(sub, toind), epochs.columns[0]] = np.nan
             
         # NaN within each trial time points that are "too late" with respect to
         # response aligned time
         for tr in trials:
                 # small offset added to ensure that only times > RT removed
                 epochs.loc[
-                        (tr, slice(rts.loc[(sub, tr)] + toolate + 1e-6, None)), 
+                        (sub, tr, slice(rts.loc[(sub, tr)] + toolate + 1e-6, None)), 
                         epochs.columns[0]] = np.nan
                         
         # change to response-aligned times, when desired
         if response_aligned:
-            epochs.index = rtindex(sub)
+            epochs.index = helpers.to_resp_aligned_index(epochs.index, rts)
+        
+        # from here on I don't need the subject index
+        epochs = epochs.loc[sub]
             
         # select desired times
         if len(timeslice) > 0:
