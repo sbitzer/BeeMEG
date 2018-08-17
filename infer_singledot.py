@@ -34,7 +34,7 @@ dots = np.arange(1, 7)
 # onset aligned analysis: all trials with response-aligned time >= toolate will
 # be removed from regression analysis, set to 5000 or higher to include all 
 # available trials
-toolate = -200
+toolate = 5000
 
 # exclude timed-out trials
 exclude_to = True
@@ -44,7 +44,7 @@ exclude_to = True
 mindata = 30
 
 # names of regressors that should enter the GLM
-r_names = ['dot_x', 'dot_y', 'entropy', 'trial_time', 'intercept', 'response']
+r_names = ['trial_time', 'intercept', 'response']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
@@ -54,14 +54,19 @@ r_cats = subject_DM.regressors.get_regressor_categories(r_names)
 # whether a response-aligned analysis should be run, i.e., whether time should
 # be defined with respect to the response time; if True, set timeslice below
 # providing both ends
-response_aligned = False
+response_aligned = True
+if response_aligned and toolate <= 1000:
+    key = input("toolate is suspiciously low ({}) for response-aligned "
+                "analysis!\nContinue anyway? (y/n): ".format(toolate))
+    if key.lower() != "y":
+        raise ValueError("toolate too low !")
 
 # time window for which to run the analysis, must be a 0-, 1- or 2-element list
 # if empty list, all times in srcfile are used for analysis;
 # if 1-element, all times starting with the given will be included in analysis;
 # if 2-element, these are the slice limits considered (right edge is inclusive)
 # note that global normalisation of data is still over all times in srcfile
-timeslice = [0, 1200]
+timeslice = [-1000, 500]
 
 # How many permutations should be computed?
 nperm = 3
@@ -274,7 +279,7 @@ DM_condition_numbers = data_counts.copy()
 permutation = np.arange(trials.size * times.size).reshape(
         [trials.size, times.size])
 
-for perm in range(1, nperm+1):
+for perm in range(0, nperm+1):
     print('\npermutation %d' % perm)
     print('-------------')
     if perm > 0:
