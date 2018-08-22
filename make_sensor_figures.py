@@ -10,6 +10,7 @@ import helpers
 import pandas as pd
 import numpy as np
 import os
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import mne
 import source_statistics as ss
@@ -33,10 +34,17 @@ resfile = 'meg_sequential_201802061518.h5'
 # label_tc normalised across trials but within times and subjects
 #resfile = 'meg_sequential_201808091710.h5'
 
+# baseline (-0.3, 0), response-aligned
+# time [-1000, 500], exclude time-outs
+# trial_time, intercept, response
+# trial normalisation of data, local normalisation of DM
+#resfile = 'meg_singledot_201808171105.h5'
+
 # should be chosen from the above, used for figures comparing momentary and
 # accumulated evidence using separate regressions using dot_x or sum_dot_x
 files = {'dot_x': 'meg_sequential_201802061518.h5',
-         'sum_dot_x': 'meg_sequential_201808091710.h5'}
+         'sum_dot_x': 'meg_sequential_201808091710.h5',
+         'response': 'meg_singledot_201808171105.h5'}
 
 resfile = os.path.join(helpers.resultsdir, resfile)
 
@@ -44,6 +52,11 @@ figdir = helpers.figdir
 
 accev_off = 100
 accev_sign = -1
+
+evoked = helpers.load_evoked_container(window=[0, 0.9])
+
+vmin = -0.1
+vmax = -vmin
 
 
 #%% helper functions
@@ -78,11 +91,6 @@ def plot_single_signal(fl_data, sl_data, label, r_name, ax=None, measure='mean')
 first_level = pd.read_hdf(resfile, 'first_level')
 second_level = pd.read_hdf(resfile, 'second_level')
 perms = second_level.index.levels[0]
-
-evoked = helpers.load_evoked_container(window=[0, 0.9])
-
-vmin = -0.1
-vmax = -vmin
 
 
 #%% average signals for dot_x and dot_y across time
@@ -197,54 +205,85 @@ wval, wpval = scipy.stats.wilcoxon(slabs['dot_x'] - slabs['dot_y'])
 print('Wilcoxon-test: W = %d, p=%e' % (wval, wpval))
 
 
-#%% average signal for response across time
-fig = plt.figure(figsize=(7.5, 3.5))
+#%% average signal for response across response-aligned time
+measure = 'mean'
 
-nperm = 2
+# which times to show in time course
+t_slice = slice(-700, 400)
 
-linecol = '#4c72b0'
+times_low = np.r_[-300, -120]
+times_high = np.r_[30, 360]
+times = np.r_[times_low, times_high]
 
-# time offset for trial regressors when trialregs_dot=-1
-t_off = 200
+nperm = 3
 
-# which time to show as topoplot?
-r_time = 780
+fig = plt.figure(figsize=(6, 6))
+ax = plt.subplot(3, 1, 1)
 
+col = 'C0'
 
-# plot absmean curve
-ax = fig.add_axes([0.11, 0.15, 0.65, 0.75])
-values = second_level.xs(0)[('mean', 'response')].abs().mean(level='time')
-datal, = ax.plot(values.index + t_off, values.values, color=linecol, lw=2)
-ax.set_title('response')
-ax.set_xlabel('time from first dot onset (ms)')
-ax.set_ylabel('average absolute beta')
-
-markers, = ax.plot(r_time, values.loc[r_time-t_off], '.k', ms=10)
-
+# load sum_dot_x and plot
+sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['response']),
+                 'second_level')
 for perm in range(1, nperm+1):
-    values = second_level.xs(perm)[('mean', 'response')].abs().mean(level='time')
-    perml, = ax.plot(values.index + t_off, values.values, ':', color=linecol, lw=1)
+    values = sl.xs(perm)[(measure, 'response')].abs().mean(level='time').loc[
+            t_slice]
+    perml, = ax.plot(values.index, values.values, ':', 
+                     color=col, lw=1, alpha=0.3, zorder=1)
 
-ax.legend([datal, perml, markers], ['data', 'permuted', 'topo time'],
-          loc='upper left')
+values = sl.xs(0)[(measure, 'response')].abs().mean(level='time').loc[t_slice]
+al, = ax.plot(values.index, values.values, 
+              color=col, lw=2, alpha=1, zorder=2)
 
+markers, = ax.plot(times, values.loc[times], '.k', ms=10)
 
-# topoplot
-ax = fig.add_axes([0.79, 0.28, 0.18, 0.5])
+ax.set_title('choice', fontdict={'fontsize': 12})
+ax.set_xlabel('time from response (ms)')
+ax.set_ylabel(r'mean magnitude of grand average $\beta$')
 
-values = second_level.xs(0)[('mean', 'response')]
-values = values.reset_index(level='channel').pivot(columns='channel')
-values.columns = values.columns.droplevel([0,1])
+# plot topographies
+T = len(times)
+axes_low = [plt.subplot(3, T, T+p+1) for p in range(len(times_low))]
+axes_high = [plt.subplot(3, T, T+len(times_low)+p+1) 
+             for p in range(len(times_high))]
+
+values = sl.xs(0)[(measure, 'response')]
+ev = mne.EvokedArray(
+        values.values.reshape(102, values.index.levels[1].size), 
+        evoked.info, nave=480*5, 
+        tmin=values.index.levels[1][0] / 1000)
+
+ev.plot_topomap(times_low / 1000, scalings=1, vmin=vmin, vmax=vmax, 
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='beta', outlines='skirt', axes=axes_low, colorbar=False);
+
+vmax_high = 0.5
+ev.plot_topomap(times_high / 1000, scalings=1, vmin=-vmax_high, vmax=vmax_high, 
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='beta', outlines='skirt', axes=axes_high, colorbar=False);
+
+def add_cbar(im, ax):
+    cb = mpl.colorbar.ColorbarBase(ax, cmap=im.cmap, norm=im.norm,
+                                   orientation='horizontal')
+    cb.set_ticks(np.linspace(im.norm.vmin, im.norm.vmax, 5))
+    ax.set_xlabel(r'second level $\beta$')
     
-ev = mne.EvokedArray(values.values.T, evoked.info, 
-                     tmin=t_off/1000, nave=480*5)
-
-ev.plot_topomap(r_time/1000, scale=1, vmin=vmin, vmax=vmax, 
-                image_interp='nearest', unit='beta', outlines='skirt', axes=ax, 
-                colorbar=False);
+axes_cbar = [plt.subplot(3, 2, 5), plt.subplot(3, 2, 6)]
+for axt, axcb, xloc in zip([axes_low[0], axes_high[0]], axes_cbar, [0.08, 0.56]):
+    im = [c for c in axt.get_children() 
+          if isinstance(c, mpl.image.AxesImage)][0]
+    add_cbar(im, axcb)
+    
+    axcb.set_position([xloc, 0.1, 0.35, 0.03])
                 
-fig.savefig(os.path.join(figdir, 'response_absmean.png'), 
-            dpi=300)
+# tune other axis positions
+ax.set_position([0.12, 0.5, 0.85, 0.44])
+for tax in axes_low + axes_high:
+    bbox = tax.get_position(True)
+    tax.set_position([bbox.x0, 0.11, bbox.width, bbox.height], 
+                     which='original')
+
+fig.savefig(os.path.join(helpers.figdir, 'response_sensor_absmean.png'))
 
 
 #%% show example beta-trajectories for selected sensors
@@ -475,8 +514,8 @@ fig.savefig(os.path.join(figdir, 'accev_x_%s.png' % channel))
 
 
 #%% compare grand average of accev and sum_dot_x from different regressions
-files = {'accev': 'meg_sequential_201802061518.h5',
-         'sum_dot_x': 'meg_sequential_201808091710.h5'}
+asfiles = {'accev': 'meg_sequential_201802061518.h5',
+           'sum_dot_x': 'meg_sequential_201808091710.h5'}
 
 measure = 'mean'
 nperm = 3
@@ -490,7 +529,7 @@ fig = plt.figure(figsize=(5, 4.5))
 ax = plt.subplot(2, 1, 1)
 
 for reg in ['accev', 'sum_dot_x']:
-    sl = pd.read_hdf(os.path.join(helpers.resultsdir, files[reg]), 
+    sl = pd.read_hdf(os.path.join(helpers.resultsdir, asfiles[reg]), 
                      'second_level')
     
     off = 0 if reg == 'sum_dot_x' else accev_off
@@ -528,9 +567,6 @@ measure = 'mean'
 # set to None for checking the grand average magnitudes
 #channel = 'MEG0731'
 channel = None
-
-files = {'dot_x': 'meg_sequential_201802061518.h5',
-         'sum_dot_x': 'meg_sequential_201808091710.h5'}
 
 npre = 2
 xcols = plt.cm.Greens_r(np.linspace(0.3, 0.7, npre+1))
