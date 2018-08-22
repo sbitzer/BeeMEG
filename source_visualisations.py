@@ -27,8 +27,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import source_statistics as ss
 
-if sys.version_info < (3,):
+try:
     from surfer import Brain
+except:
+    pass
 
 if os.name == 'posix':
     subjects_dir = 'mne_subjects'
@@ -262,7 +264,7 @@ def find_mni_coordinates(label, parc='HCPMMP1_5_8'):
     return mnicoords
 
 
-if sys.version_info < (3,):
+if 'Brain' in locals():
     def make_movie(stc, hemi='lh', td=10, smoothing_steps=5, colvals=None):
         brain = stc.plot(subject='fsaverage', surface='inflated', hemi=hemi, 
                          smoothing_steps=smoothing_steps)
