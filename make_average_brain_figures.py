@@ -32,7 +32,7 @@ show_measure = 'abstval'
 use_basefile = show_measure in ss.basefile_measures
 
 # regressor of interest
-r_name = 'dot_x_sign'
+r_name = 'response'
 
 # settings for specific regressors (can overwrite common settings)
 if r_name == 'dot_x':
@@ -101,6 +101,18 @@ elif r_name == 'dot_x_sign':
              "transition": [160, 200], 
              "plateau": [300, 500]}
     
+elif r_name == 'response':
+    # loose source orientations, but cortex normal currents
+    # baseline (-0.3, 0), response-aligned
+    # time [-1000, 500], exclude time-outs
+    # trial_time, intercept, response
+    # trial normalisation of data, local normalisation of DM
+    basefile = 'source_singledot_201808171756.h5'
+    
+    twins = {"build-up": [-500, -120],
+             "response": [-30, 100]}
+    
+    common_color_scale = False
 
 
 #%% load clusters of significant effects
@@ -196,7 +208,7 @@ def brain_plot(brain, wname, toplabels=False, save=False):
     if r_name in ['dot_x', 'dot_y', 'dot_x_sign']:
         views = {'rh': ['medial', 'parietal'], #{'azimuth': -20, 'elevation': 62, 'roll': -68}], 
                  'lh': ['parietal', 'medial']}
-    elif r_name == 'sum_dot_x':
+    elif r_name in ['sum_dot_x', 'response']:
         views = {'rh': ['medial', 'lateral'],
                  'lh': ['lateral', 'medial']}
     
@@ -247,7 +259,7 @@ show_toplabels = True
 
 if interactive:
     hemi = 'rh'
-    wname = 'full'
+    wname = 'build-up'
     brain = brain_plot(hemi, wname, show_toplabels)
 else:
     for hemi in ['lh', 'rh']:
