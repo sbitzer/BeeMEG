@@ -20,12 +20,17 @@ import gc
 dotfile = 'batch_dots_pv2.mat'
 
 # directories
+# tmp-directory should use local directory (preventing issue with remote store)
 if os.name == 'posix':
     figdir = os.path.expanduser('~/ZIH/texts/BeeMEG/figures')
     basedir = 'data'
+    tmpdir = '/media/bitzer/Data'
+    bemdir = os.path.join('mne_subjects', 'fsaverage', 'bem')
 else:
     figdir = '.'
     basedir = 'X:\BeeMEG\Variables'
+    tmpdir = os.path.join('E:/', 'bitzer')
+    bemdir = os.path.join('E:/', 'bitzer', 'mne_subjects', 'fsaverage', 'bem')
 behavdatadir = os.path.join(basedir, 'meg_behav')
 megdatadir = os.path.join(basedir, 'meg_final_data')
 resultsdir = os.path.join(basedir, 'inf_results')

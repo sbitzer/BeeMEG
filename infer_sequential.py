@@ -151,20 +151,12 @@ elif datatype == 'source':
     # window = [-0.3, 2.5], no baseline correction before source reconstruction
 #    srcfile = 'source_epochs_allsubs_HCPMMP1_5_8_201807051740.h5'
     
-    if os.name == 'posix':
-        srcfile = os.path.join('mne_subjects', 'fsaverage', 'bem', srcfile)
-    else:
-        srcfile = os.path.join('E:/', 'bitzer', 'mne_subjects', 'fsaverage', 
-                               'bem', srcfile)
+    srcfile = os.path.join(helpers.bemdir, srcfile)
     epname = 'label_tc'
 
 # where to store
 file = pd.datetime.now().strftime(datatype+'_sequential'+'_%Y%m%d%H%M'+'.h5')
-# tmp-file should use local directory (preventing issue with remote store)
-if os.name == 'posix':
-    tmpfile = os.path.join('/media/bitzer/Data', file+'.tmp')
-else:
-    tmpfile = os.path.join('E:/', 'bitzer', file+'.tmp')
+tmpfile = os.path.join(helpers.tmpdir, file+'.tmp')
 file = os.path.join(helpers.resultsdir, file)
 
 # create HDF5-file and save chosen options
