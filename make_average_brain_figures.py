@@ -20,9 +20,21 @@ figdir = sv.fig_dir
 
 
 #%%
+# settings common across all regressors
+fdr_alpha = 0.05
+
+common_color_scale = True
+
+# newest results are based on this parcellation, cf. 'srcfile' in basefile
+parc = 'HCPMMP1_5_8'
+
+show_measure = 'abstval'
+use_basefile = show_measure in ss.basefile_measures
+
 # regressor of interest
 r_name = 'dot_x_sign'
 
+# settings for specific regressors (can overwrite common settings)
 if r_name == 'dot_x':
     # label mode = mean, baseline (-0.3, 0), first 5 dots, 
     # trialregs_dot=0, source GLM, sum_dot_y, constregs=0 for 1st dot, 
@@ -53,8 +65,6 @@ if r_name == 'dot_x':
              "transition": [160, 200], 
              "plateau": [300, 500]}
     
-    fdr_alpha = 0.05
-    
 elif r_name == 'sum_dot_x':
     # loose source orientations, but cortex normal currents
     # label mode = mean_flip, baseline (-0.3, 0), all dots with toolate=-200, 
@@ -65,8 +75,6 @@ elif r_name == 'sum_dot_x':
     basefile = 'source_sequential_201808131739.h5'
     
     twins = {"full": [0, 550]}
-    
-    fdr_alpha = 0.05
     
 elif r_name == 'dot_y':
     # loose source orientations, but cortex normal currents
@@ -79,8 +87,6 @@ elif r_name == 'dot_y':
     
     twins = {"one": [120, 220],
              "two": [300, 400]}
-    
-    fdr_alpha = 0.05
 
 elif r_name == 'dot_x_sign':
     # loose source orientations, but cortex normal currents
@@ -95,13 +101,6 @@ elif r_name == 'dot_x_sign':
              "transition": [160, 200], 
              "plateau": [300, 500]}
     
-    fdr_alpha = 0.05
-
-# newest results are based on this parcellation, cf. 'srcfile' in basefile
-parc = 'HCPMMP1_5_8'
-
-show_measure = 'abstval'
-use_basefile = show_measure in ss.basefile_measures
 
 
 #%% load clusters of significant effects
@@ -152,7 +151,7 @@ def get_average_effects(twin, wname, top=5):
     avcsv = avsrcdf[avsrcdf.tval != 0].copy().xs(time, level='time')
     avcsv['region'] = avcsv.index.map(ss.get_Glasser_section)
     avcsv = avcsv.reset_index().sort_values(show_measure, ascending=False)
-    to_csv(avcsv[['label', 'region', 'mlog10p', 'tval', 'mean', 'std']],
+    to_csv(avcsv[['label', 'region', 'mlog10p', 'tval', 'mean', 'std']].copy(),
            os.path.join(figdir, 'average_significant_%s_%s.csv' % (
                    r_name, wname)))
     
@@ -179,13 +178,15 @@ for name, win in twins.items():
     results[name] = dict(avsrcdf=avsrcdf, time=time, toplabels=toplabels)
 
 avsrcdf = pd.concat([results[name]['avsrcdf'] for name in twins.keys()])
-avsrcdf = avsrcdf[avsrcdf[show_measure] != 0]
 
-colorinfo = {'fmin': avsrcdf[show_measure].abs().min(),
-             'fmid': avsrcdf[show_measure].abs().median(), 
-             'fmax': avsrcdf[show_measure].abs().max(), 
-             'transparent': True,
-             'colormap': 'auto'}
+def get_colorinfo(avsrcdf):
+    avsrcdf = avsrcdf[avsrcdf[show_measure] != 0]
+    
+    return {'fmin': avsrcdf[show_measure].abs().min(),
+            'fmid': avsrcdf[show_measure].abs().median(), 
+            'fmax': avsrcdf[show_measure].abs().max(), 
+            'transparent': True,
+            'colormap': 'auto'}
 
         
 #%% make helper plotting function
@@ -207,8 +208,13 @@ def brain_plot(brain, wname, toplabels=False, save=False):
     else:
         hemi = brain.geo.keys()[0]
         
+    if common_color_scale:
+        cinfo = get_colorinfo(avsrcdf)
+    else:
+        cinfo = get_colorinfo(results[wname]['avsrcdf'])
+        
     sv.show_labels_as_data(results[wname]['avsrcdf'], show_measure, brain, 
-                           time_label=None, parc=parc, **colorinfo)
+                           time_label=None, parc=parc, **cinfo)
     
     if toplabels:
         brain.remove_labels()
