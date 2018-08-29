@@ -286,6 +286,54 @@ for tax in axes_low + axes_high:
 fig.savefig(os.path.join(helpers.figdir, 'response_sensor_absmean.png'))
 
 
+#%% compare topographies of response correlation at two time points
+measure = 'beta'
+t1 = -120
+t2 = 30
+
+# load data
+data = pd.read_hdf(os.path.join(helpers.resultsdir, files['response']),
+                   'first_level').loc[0].loc[(slice(None), [t1, t2]), :].xs(
+                         measure, level='measure', axis=1).xs(
+                                 'response', level='regressor', axis=1).copy()
+
+# scale data so that for each time point and subject the mean magnitude of
+# betas across sensors is 1
+data = data.unstack('time')
+data = data / data.abs().mean()
+
+# compute difference between times
+diff = data.xs(t1, level='time', axis=1) - data.xs(t2, level='time', axis=1)
+
+# determine statistically significant values
+tvals, pvals = scipy.stats.ttest_1samp(diff, 0, axis=1)
+reject, pval_fdr = mne.stats.fdr_correction(pvals)
+
+# plot mean differences and significant sensors
+fig, ax = plt.subplots(figsize=(2.5,2))
+ev = mne.EvokedArray(
+        diff.mean(axis=1).values[:, None], 
+        evoked.info, nave=480*5, 
+        tmin=0)
+vmax_high = np.round(np.abs(ev.data).max(), 1)
+ev.plot_topomap(0, scalings=1, vmin=-vmax_high, vmax=vmax_high, colorbar=False,
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='au', outlines='skirt', mask=reject[:, None], axes=ax);
+
+ax.set_title('choice\n{} ms - {} ms'.format(t1, t2))
+ax.set_position([0.05, 0.04, 0.65, 0.73])
+
+axcb = plt.axes([0.75, 0.08, 0.05, 0.65])
+im = [c for c in ax.get_children() if isinstance(c, mpl.image.AxesImage)][0]
+cb = mpl.colorbar.ColorbarBase(axcb, cmap=im.cmap, norm=im.norm,
+                               orientation='vertical')
+cb.set_ticks(np.linspace(im.norm.vmin, im.norm.vmax, 5))
+axcb.tick_params(labelsize='x-small')
+axcb.set_title('z', fontsize='small')
+
+fig.savefig(os.path.join(helpers.figdir, 'response_difference.png'))
+
+
 #%% show example beta-trajectories for selected sensors
 
 def sensor_signal_plot(r_name, sensor, time, title, axes=None):
