@@ -12,10 +12,18 @@ from scipy.io import loadmat
 import numpy as np
 import pandas as pd
 import re
-import rtmodels
-import numba
 import mne
 import gc
+from six import print_
+
+try:
+    import numba
+except:
+    pass
+try:
+    import rtmodels
+except:
+    pass
 
 dotfile = 'batch_dots_pv2.mat'
 
@@ -57,26 +65,27 @@ def load_dots(dotfile=dotfile, dotdir=basedir):
     return dotpos
 
 
-def get_ideal_observer(dotpos=None, bound=0.8):
-    if dotpos is None:
-        dotpos = load_dots()
-    D = dotpos.shape[0]
-    
-    feature_means = np.c_[[-cond, 0], [cond, 0]]
-    model = rtmodels.discrete_static_gauss(dt=dotdt, maxrt=dotdt*D, 
-                                           toresponse=toresponse, 
-                                           choices=[-1, 1], Trials=dotpos, 
-                                           means=feature_means)
-    
-    # set ideal observer parameters
-    model.intstd = dotstd
-    model.noisestd = 1e-15
-    model.prior = 0.5
-    model.lapseprob = 0.0
-    model.ndtmean = -100
-    model.bound = bound
-    
-    return model
+if 'rtmodels' in locals():
+    def get_ideal_observer(dotpos=None, bound=0.8):
+        if dotpos is None:
+            dotpos = load_dots()
+        D = dotpos.shape[0]
+        
+        feature_means = np.c_[[-cond, 0], [cond, 0]]
+        model = rtmodels.discrete_static_gauss(dt=dotdt, maxrt=dotdt*D, 
+                                               toresponse=toresponse, 
+                                               choices=[-1, 1], Trials=dotpos, 
+                                               means=feature_means)
+        
+        # set ideal observer parameters
+        model.intstd = dotstd
+        model.noisestd = 1e-15
+        model.prior = 0.5
+        model.lapseprob = 0.0
+        model.ndtmean = -100
+        model.bound = bound
+        
+        return model
 
 
 def get_5th_dot_infos(dotpos):
@@ -399,8 +408,8 @@ def create_meg_epochs_hdf(hfreq=10, sfreq=100, window=[0, 2.5], chtype='mag',
         subjects = find_available_subjects(megdatadir=megdatadir)
         
         for sub in subjects:
-            print('\ncreating data for subject %2d' % sub, flush=True)
-            print('----------------------------', flush=True)
+            print_('\ncreating data for subject %2d' % sub, flush=True)
+            print_('----------------------------', flush=True)
         
             # load MNE epochs
             epochs = load_meg_epochs_from_sdat(sub, megdatadir)
@@ -513,105 +522,105 @@ def load_evoked_container(sfreq=100, window=[0.4, 0.7], chtype='mag',
     return evoked
     
     
-
-@numba.jit(nopython=True)
-def linregress_t(data, predictors):
-    """computes t-values for the slope of data = slope*predictor + intercept
-    
-    The computations are taken from scipy.stats.linregress and cross-checked 
-    with ordinary least squares of statsmodels.
-    
-    Parameters
-    ----------
-    data : 2D-array (observations x locations)
-        the data which should be predicted, t-values will be computed 
-        independently for each of the given locations
-    predictors: 1D-array (observations)
-        predictor values which are supposed to predict the data
+if 'numba' in locals():
+    @numba.jit(nopython=True)
+    def linregress_t(data, predictors):
+        """computes t-values for the slope of data = slope*predictor + intercept
         
-    Returns
-    -------
-    tvals : 1D-array (locations)
-        t-values computed for the data at each location
-    """
-    # numba doesn't recognise the condition on ndim and compilation fails with
-    # an error, because it thinks that data will become 3D for a given 2D array
-#    if data.ndim == 1:
-#        data = np.expand_dims(data, 1)
-    N, M = data.shape
-    
-    TINY = 1.0e-20
-    df = N - 2
-    
-    ssxm = np.var(predictors)
-    xm = predictors - predictors.mean()
-    
-    tvals = np.zeros(M)
-    for i in range(M):
-        ssym = np.var(data[:, i])
-        r_num = np.dot(xm, data[:, i] - data[:, i].mean()) / N
-        r_den = np.sqrt(ssxm * ssym)
-        if r_den == 0.0:
-            r = 0.0
-        else:
-            r = r_num / r_den
-            # test for numerical error propagation
-            if r > 1.0:
-                r = 1.0
-            elif r < -1.0:
-                r = -1.0
-        
-        tvals[i] = r * np.sqrt(df / ((1.0 - r + TINY)*(1.0 + r + TINY)))
-    
-    return tvals
-
-
-@numba.jit((numba.float64[:,:], numba.float64[:,:], 
-            numba.optional(numba.int64[:])), nopython=True)
-def glm_t(data, DM, selecti):
-    """Compute t-values for regressors in a GLM with ordinary least squares.
-    
-        Computations are taken from Wikipedia_ and cross-checked with 
-        statsmodels.
+        The computations are taken from scipy.stats.linregress and cross-checked 
+        with ordinary least squares of statsmodels.
         
         Parameters
         ----------
-        data : 2D-array (observations x data sets)
-            the data to be fitted with the GLM
-            
-        DM : 2D-array (observations x regressors)
-            the design matrix
-            
-        selecti : 1D-array of ints, or None
-            indeces of regressors for which t-values should be returned
+        data : 2D-array (observations x locations)
+            the data which should be predicted, t-values will be computed 
+            independently for each of the given locations
+        predictors: 1D-array (observations)
+            predictor values which are supposed to predict the data
             
         Returns
         -------
-        tvals : 2D-array (data sets x number of selected regressors)
-            the computed t-values of the selected regressors
+        tvals : 1D-array (locations)
+            t-values computed for the data at each location
+        """
+        # numba doesn't recognise the condition on ndim and compilation fails with
+        # an error, because it thinks that data will become 3D for a given 2D array
+    #    if data.ndim == 1:
+    #        data = np.expand_dims(data, 1)
+        N, M = data.shape
         
-        .. _Wikipedia: https://en.wikipedia.org/wiki/Ordinary_least_squares
-    """
-    N, M = data.shape
-    P = DM.shape[1]
-    
-    if selecti is None:
-        selecti = np.arange(P)
-    O = selecti.size
-    selecti = selecti.astype(np.uint64)
-    
-    DM2inv = np.linalg.inv(np.dot(DM.T, DM))
-    DM2inv_diag = np.diag(DM2inv)
-    
-    tvals = np.zeros((M, O))
-    for i in range(M):
-        beta = np.dot(np.dot(DM2inv, DM.T), data[:, i])
-        resid = data[:, i] - np.dot(DM, beta)
-        s2 = np.dot(resid.T, resid) / (N - P)
-        sei = np.sqrt(s2 * DM2inv_diag[selecti])
-        tvals[i, :] = beta[selecti] / sei
+        TINY = 1.0e-20
+        df = N - 2
         
-    return tvals
+        ssxm = np.var(predictors)
+        xm = predictors - predictors.mean()
+        
+        tvals = np.zeros(M)
+        for i in range(M):
+            ssym = np.var(data[:, i])
+            r_num = np.dot(xm, data[:, i] - data[:, i].mean()) / N
+            r_den = np.sqrt(ssxm * ssym)
+            if r_den == 0.0:
+                r = 0.0
+            else:
+                r = r_num / r_den
+                # test for numerical error propagation
+                if r > 1.0:
+                    r = 1.0
+                elif r < -1.0:
+                    r = -1.0
+            
+            tvals[i] = r * np.sqrt(df / ((1.0 - r + TINY)*(1.0 + r + TINY)))
+        
+        return tvals
+    
+    
+    @numba.jit((numba.float64[:,:], numba.float64[:,:], 
+                numba.optional(numba.int64[:])), nopython=True)
+    def glm_t(data, DM, selecti):
+        """Compute t-values for regressors in a GLM with ordinary least squares.
+        
+            Computations are taken from Wikipedia_ and cross-checked with 
+            statsmodels.
+            
+            Parameters
+            ----------
+            data : 2D-array (observations x data sets)
+                the data to be fitted with the GLM
+                
+            DM : 2D-array (observations x regressors)
+                the design matrix
+                
+            selecti : 1D-array of ints, or None
+                indeces of regressors for which t-values should be returned
+                
+            Returns
+            -------
+            tvals : 2D-array (data sets x number of selected regressors)
+                the computed t-values of the selected regressors
+            
+            .. _Wikipedia: https://en.wikipedia.org/wiki/Ordinary_least_squares
+        """
+        N, M = data.shape
+        P = DM.shape[1]
+        
+        if selecti is None:
+            selecti = np.arange(P)
+        O = selecti.size
+        selecti = selecti.astype(np.uint64)
+        
+        DM2inv = np.linalg.inv(np.dot(DM.T, DM))
+        DM2inv_diag = np.diag(DM2inv)
+        
+        tvals = np.zeros((M, O))
+        for i in range(M):
+            beta = np.dot(np.dot(DM2inv, DM.T), data[:, i])
+            resid = data[:, i] - np.dot(DM, beta)
+            s2 = np.dot(resid.T, resid) / (N - P)
+            sei = np.sqrt(s2 * DM2inv_diag[selecti])
+            tvals[i, :] = beta[selecti] / sei
+            
+        return tvals
 
 
 def to_resp_aligned_index(tindex, rts, in_units='ms'):
@@ -679,7 +688,7 @@ def load_area_tcs(srcfile, subjects, labels, resp_align=False, rts=None,
     
     #% load data of all subjects
     def load_subject(sub):
-        print('\rloading subject %02d ...' % sub, flush=True, end='')
+        print_('\rloading subject %02d ...' % sub, flush=True, end='')
         with pd.HDFStore(srcfile, 'r') as store:
             epochs = store.select('label_tc', 'subject=sub')[labels]
         
@@ -699,10 +708,10 @@ def load_area_tcs(srcfile, subjects, labels, resp_align=False, rts=None,
         
         return epochs
     
-    print("loading ... ", end='')
+    print_("loading ... ", end='')
     alldata = pd.concat([load_subject(sub) for sub in subjects],
                         keys=subjects, names=['subject', 'trial', 'time'])
-    print('done.')
+    print_('done.')
     
     if normalise == 'global':
         epochs_mean = pd.read_hdf(srcfile, 'epochs_mean')
