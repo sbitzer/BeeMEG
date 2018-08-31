@@ -229,7 +229,7 @@ for perm in range(1, nperm+1):
     values = sl.xs(perm)[(measure, 'response')].abs().mean(level='time').loc[
             t_slice]
     perml, = ax.plot(values.index, values.values, ':', 
-                     color=col, lw=1, alpha=0.3, zorder=1)
+                     color=col, lw=1, alpha=1, zorder=1)
 
 values = sl.xs(0)[(measure, 'response')].abs().mean(level='time').loc[t_slice]
 al, = ax.plot(values.index, values.values, 
