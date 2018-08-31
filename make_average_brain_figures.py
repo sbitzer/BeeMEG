@@ -21,7 +21,7 @@ figdir = sv.fig_dir
 
 #%%
 # settings common across all regressors
-fdr_alpha = 0.05
+fdr_alpha = 0.01
 
 common_color_scale = True
 
@@ -32,7 +32,7 @@ show_measure = 'abstval'
 use_basefile = show_measure in ss.basefile_measures
 
 # regressor of interest
-r_name = 'response'
+r_name = 'dot_x'
 
 # settings for specific regressors (can overwrite common settings)
 if r_name == 'dot_x':
