@@ -383,6 +383,63 @@ fig, axes = sensor_signal_plot('dot_y', 'MEG2321', 0.19, 'y-coordinate')
 fig2, axes2 = sensor_signal_plot('dot_x', 'MEG2241', 0.17, 'x-coordinate')
 
 
+#%% show grand average accumulated evidence
+measure = 'mean'
+nperm = 3
+
+a_times = np.r_[20, 80, 120, 180, 320, 400, 490]
+
+cols = dict(accev='C0')
+
+fig = plt.figure(figsize=(6.5, 4.5))
+ax = plt.subplot(2, 1, 1)
+
+# load sum_dot_x and plot
+sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['sum_dot_x']),
+                 'second_level')
+for perm in range(1, nperm+1):
+    values = sl.xs(perm)[(measure, 'sum_dot_x')].abs().mean(level='time')
+    perml, = ax.plot(values.index, values.values, ':', 
+                     color=cols['accev'], lw=1, alpha=1, zorder=1)
+
+values = sl.xs(0)[(measure, 'sum_dot_x')].abs().mean(level='time')
+al, = ax.plot(values.index, values.values, 
+              color=cols['accev'], lw=2, alpha=1, zorder=2)
+
+markers, = ax.plot(a_times, values.loc[a_times], '.k', ms=10)
+
+ax.set_title('accumulated evidence', fontdict={'fontsize': 12})
+ax.set_xlabel('time from dot onset (ms)')
+ax.set_ylabel(r'mean magnitude of grand average $\beta$')
+
+ax.set_xlim(0, 690)
+ylim = ax.get_ylim()
+ax.set_ylim(0, ylim[1])
+
+# plot topographies
+T = len(a_times)
+at_axes = [plt.subplot(2, T, T+p+1) for p in range(T)]
+
+values = sl.xs(0)[(measure, 'sum_dot_x')]
+ev = mne.EvokedArray(
+        values.values.reshape(102, values.index.levels[1].size), 
+        evoked.info, nave=480*5, 
+        tmin=values.index.levels[1][0])
+
+ev.plot_topomap(a_times / 1000, scalings=1, vmin=vmin, vmax=vmax, 
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='beta', outlines='skirt', axes=at_axes, colorbar=False);
+
+# tune axis positions
+ax.set_position([0.16, 0.38, 0.77, 0.56])
+for tax in at_axes:
+    bbox = tax.get_position(True)
+    tax.set_position([bbox.x0, -0.11, bbox.width, bbox.height], 
+                     which='original')
+    
+fig.savefig(os.path.join(figdir, 'accev_sensor_absmean.png'))
+
+
 #%% compare grand average accumulated vs momentary evidence
 measure = 'mean'
 nperm = 3
@@ -458,7 +515,7 @@ for tax in at_axes:
     tax.set_position([bbox.x0, -0.11, bbox.width, bbox.height], 
                      which='original')
     
-fig.savefig(os.path.join(figdir, 'accev_sensor_absmean.png'))
+fig.savefig(os.path.join(figdir, 'accev_vs_dotx_sensor_absmean.png'))
 
 
 #%% compare topographies of accumulated and momentary evidence at 80 and 180 ms
