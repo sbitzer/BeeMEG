@@ -307,7 +307,7 @@ diff = data.xs(t1, level='time', axis=1) - data.xs(t2, level='time', axis=1)
 
 # determine statistically significant values
 tvals, pvals = scipy.stats.ttest_1samp(diff, 0, axis=1)
-reject, pval_fdr = mne.stats.fdr_correction(pvals)
+reject, pval_fdr = mne.stats.fdr_correction(pvals, alpha=0.01)
 
 # plot mean differences and significant sensors
 fig, ax = plt.subplots(figsize=(2.5,2))
