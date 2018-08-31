@@ -68,6 +68,14 @@ if response_aligned and toolate <= 1000:
 # note that global normalisation of data is still over all times in srcfile
 timeslice = [-1000, 500]
 
+# time windows whithin which times will be aggregated as indepedent data points
+# into a common regression analysis
+# set to timewins = {} for no such aggregation
+# note that internally timewins will be transformed into a pd.Series below
+# only times defined in timeslice will be used even if timewins extend beyond
+timewins = {"build-up": [-500, -120],
+            "response": [-30, 100]}
+
 # How many permutations should be computed?
 nperm = 3
 
@@ -157,6 +165,9 @@ file = pd.datetime.now().strftime(datatype+'_singledot'+'_%Y%m%d%H%M'+'.h5')
 tmpfile = os.path.join(helpers.tmpdir, file+'.tmp')
 file = os.path.join(helpers.resultsdir, file)
 
+# transform time windows from dictionary to Series
+timewins = pd.Series(timewins).sort_index()
+
 # create HDF5-file and save chosen options
 with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
     store['scalar_params'] = pd.Series(
@@ -166,6 +177,7 @@ with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
     store['normDM'] = pd.Series(normDM)
     store['normdata'] = pd.Series(normdata)
     store['srcfile'] = pd.Series(srcfile)
+    store['timewins'] = timewins
 
 
 #%% extract some basic info from example data
@@ -207,6 +219,12 @@ else:
 # default index for epochs, used for reindexing below to select desired times
 index = pd.MultiIndex.from_product([trials, times], names=['trial', 'time'])
 
+# define the times that are eventually stored
+if timewins.size == 0:
+    times_out = times
+else:
+    times_out = timewins.index
+
 
 #%% load trial-level design matrices for all subjects (ith-dot based)
 DM = subject_DM.get_trial_DM(dots, subjects, r_names=r_names)
@@ -247,7 +265,7 @@ datalabels = epochs.columns
 
 first_level = pd.DataFrame([], 
         index=pd.MultiIndex.from_product([np.arange(nperm+1), 
-              datalabels, times], 
+              datalabels, times_out], 
               names=['permnr', 'label', 'time']),
         columns=pd.MultiIndex.from_product([subjects, ['beta', 'bse'], 
               DM.columns], names=['subject', 'measure', 'regressor']), 
@@ -256,7 +274,7 @@ first_level.sort_index(axis=1, inplace=True)
 
 first_level_diagnostics = pd.DataFrame([], 
         index=pd.MultiIndex.from_product([np.arange(nperm+1), 
-              datalabels, times], 
+              datalabels, times_out], 
               names=['permnr', 'label', 'time']),
         columns=pd.MultiIndex.from_product([subjects, ['Fval', 'R2', 'llf']], 
               names=['subject', 'measure']), dtype=np.float64)
@@ -264,7 +282,7 @@ first_level_diagnostics.sort_index(axis=1, inplace=True)
 
 second_level = pd.DataFrame([], 
         index=pd.MultiIndex.from_product([np.arange(nperm+1), 
-              datalabels, times], 
+              datalabels, times_out], 
               names=['permnr', 'label', 'time']), 
         columns=pd.MultiIndex.from_product([['mean', 'std', 'tval', 'mlog10p'], 
               DM.columns], names=['measure', 'regressor']), dtype=np.float64)
@@ -276,7 +294,7 @@ assert np.all(second_level.columns.levels[1] == DM.columns), 'order of ' \
     'regressors in design matrix should be equal to that of results DataFrame'
 
 data_counts = pd.DataFrame(
-        [], index=times, dtype=float,
+        [], index=times_out, dtype=float,
         columns=pd.Index(subjects, name='subject'))
 
 DM_condition_numbers = data_counts.copy()
@@ -347,13 +365,28 @@ for perm in range(0, nperm+1):
         
         # save data counts for this subject
         if perm == 0:
-            data_counts[sub] = epochs.iloc[:, 0].groupby('time').count()
+            dcnts = epochs.iloc[:, 0].groupby('time').count()
+            if timewins.size == 0:
+                data_counts[sub] = dcnts
+            else:
+                for wname, win in timewins.iteritems():
+                    data_counts.loc[wname, sub] = dcnts.loc[slice(*win)].sum()
         
-        for t0 in times:
-            print('\rsubject = %2d, t0 = % 5d' % (sub, t0), end='', flush=True)
+        for t0 in times_out:
+            if timewins.size == 0:
+                print('\rsubject = %2d, t0 = % 5d' % (sub, t0), 
+                      end='', flush=True)
+                
+                data = epochs.xs(t0, level='time')
+                datatrials = data.index
+            else:
+                print('\rsubject = %2d, t0 = % 10s' % (sub, t0), 
+                      end='', flush=True)
+                
+                data = epochs.loc[(slice(None), slice(*timewins[t0])), :]
+                datatrials = data.index.get_level_values('trial').unique()
             
-            data = epochs.xs(t0, level='time')
-            DMt0 = DM.loc[sub].loc[data.index]
+            DMt0 = DM.loc[sub].loc[datatrials]
             
             # normalise DM only across given trials, if desired
             if normDM == 'local':
@@ -373,6 +406,10 @@ for perm in range(0, nperm+1):
                     warn("High condition number of design matrix detected "
                          "({:5.2f}) for subject {:d}, t0 = {:d}!".format(
                                  DM_condition_numbers.loc[t0, sub], sub, t0))
+            
+            # expand DM to aggregated time window data, if necessary
+            if timewins.size > 0:
+                DMt0 = DMt0.reindex(data.index.get_level_values('trial'))
             
             # run regression for each data label, but only for data sets
             # with at least as many data points as there are regressors
@@ -395,7 +432,7 @@ for perm in range(0, nperm+1):
     
     print('\ncomputing second level ...')
     for label in datalabels:
-        for t0 in times:
+        for t0 in times_out:
             params = first_level.loc[(perm, label, t0), 
                                      (slice(None), 'beta', slice(None))]
             params = params.unstack('regressor')
