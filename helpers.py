@@ -720,3 +720,21 @@ def load_area_tcs(srcfile, subjects, labels, resp_align=False, rts=None,
         alldata = (alldata - epochs_mean[labels]) / epochs_std[labels]
         
     return alldata, epochtimes
+
+
+def normalise_magnitudes(data, shift=True):
+    """Normalise magnitudes to min=0 and mean=1 within columns of data."""
+    
+    signs = np.sign(data)
+    magnitudes = np.abs(data)
+    
+    if shift:
+        zero = np.min(magnitudes, axis=0)
+    else:
+        zero = np.zeros(magnitudes.shape[1])
+        
+    scale = np.mean(magnitudes - zero, axis=0)
+    
+    normed = (magnitudes - zero) / scale
+    
+    return normed * signs, zero, scale

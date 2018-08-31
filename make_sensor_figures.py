@@ -300,7 +300,7 @@ data = pd.read_hdf(os.path.join(helpers.resultsdir, files['response']),
 # scale data so that for each time point and subject the mean magnitude of
 # betas across sensors is 1
 data = data.unstack('time')
-data = data / data.abs().mean()
+data, _, _ = helpers.normalise_magnitudes(data)
 
 # compute difference between times
 diff = data.xs(t1, level='time', axis=1) - data.xs(t2, level='time', axis=1)
