@@ -62,7 +62,7 @@ if show_measure not in srcdf.columns:
 
 #%% define some plotting functions
 def get_colorinfo(srcdf, measure):
-    srcdf = srcdf[srcdf[measure] != 0]
+    srcdf = srcdf[(srcdf[measure] != 0) & srcdf[measure].notna()]
     
     return {'fmin': srcdf[measure].abs().min(),
             'fmid': srcdf[measure].abs().median(), 
@@ -129,9 +129,17 @@ def make_brain_figures(srcdf, measure, cinfo, filepat_base, top=5):
 
 
 #%% show results in brain
-interactive = True
+interactive = False
+normalise = True
 
 toplstr = lambda ls: ', '.join([l[2:-7] for l in ls])
+
+srcdf_normed = srcdf.copy()
+if normalise:
+    for wname in winnames:
+        normed, _, _ = helpers.normalise_magnitudes(
+                srcdf.loc[(slice(None), wname), :].dropna())
+        srcdf_normed.loc[normed.index] = normed
 
 if interactive:
     hemi = 'lh'
@@ -140,16 +148,20 @@ if interactive:
     brain = Brain('fsaverage', hemi, 'inflated', cortex='low_contrast',
                   subjects_dir=sv.subjects_dir, background='w', foreground='k')
     
-    sv.show_labels_as_data(srcdf.loc[(slice(None), wname), :], show_measure, 
-                           brain, time_label=None, parc=parc,
+    sv.show_labels_as_data(srcdf_normed.loc[(slice(None), wname), :], 
+                           show_measure, brain, time_label=None, parc=parc,
                            **get_colorinfo(srcdf, show_measure))
 else:
     toplstrs = []
     for wname in winnames:
         filepat_base = 'win_brain_{}_{}_{}'.format(r_name, show_measure, wname)
         
-        df = srcdf.loc[(slice(None), wname), :]
-        cinfo = get_colorinfo(df, show_measure)
+        df = srcdf_normed.loc[(slice(None), wname), :]
+        if normalise:
+            cinfo = get_colorinfo(srcdf_normed, show_measure)
+        else:
+            cinfo = get_colorinfo(df, show_measure)
+            
         toplabels = make_brain_figures(df, show_measure, cinfo, filepat_base)
         
         toplstrs.append('{}: left - {}; right - {}'.format(
@@ -214,7 +226,7 @@ srcdfdiff.loc[srcdfdiffsig[
 diff_show_measure = 'tval'
 if interactive:
     if 'brain' not in locals():
-        hemi = 'lh'
+        hemi = 'rh'
         brain = Brain(
                 'fsaverage', hemi, 'inflated', cortex='low_contrast',
                  subjects_dir=sv.subjects_dir, background='w', foreground='k')
