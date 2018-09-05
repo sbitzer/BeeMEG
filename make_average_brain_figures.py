@@ -32,7 +32,7 @@ show_measure = 'abstval'
 use_basefile = show_measure in ss.basefile_measures
 
 # regressor of interest
-r_name = 'dot_x'
+r_name = 'sum_dot_x'
 
 # settings for specific regressors (can overwrite common settings)
 if r_name == 'dot_x':
@@ -75,6 +75,8 @@ elif r_name == 'sum_dot_x':
     basefile = 'source_sequential_201808131739.h5'
     
     twins = {"full": [0, 550]}
+
+    fdr_alpha = 0.05
     
 elif r_name == 'dot_y':
     # loose source orientations, but cortex normal currents
