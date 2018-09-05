@@ -44,7 +44,7 @@ exclude_to = True
 mindata = 30
 
 # names of regressors that should enter the GLM
-r_names = ['trial_time', 'intercept', 'response']
+r_names = ['trial_time', 'left_response', 'right_response']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
@@ -73,8 +73,9 @@ timeslice = [-1000, 500]
 # set to timewins = {} for no such aggregation
 # note that internally timewins will be transformed into a pd.Series below
 # only times defined in timeslice will be used even if timewins extend beyond
-timewins = {"build-up": [-500, -120],
-            "response": [-30, 100]}
+#timewins = {"build-up": [-500, -120],
+#            "response": [-30, 100]}
+timewins = {}
 
 # How many permutations should be computed?
 nperm = 3
@@ -112,7 +113,7 @@ normDM = 'local'
 normdata = 'trials'
 
 # data to use, 'meg' for MEG channels, 'source' for sources
-datatype = 'source'
+datatype = 'meg'
 
 if datatype == 'meg':
     sfreq = 100
@@ -402,6 +403,7 @@ for perm in range(0, nperm+1):
                 DM_condition_numbers.loc[t0, sub] = (
                         subject_DM.compute_condition_number(DMt0))
                 
+                # warn if high condition number
                 if DM_condition_numbers.loc[t0, sub] > 10:
                     warn("High condition number of design matrix detected "
                          "({:5.2f}) for subject {:d}, t0 = {:d}!".format(

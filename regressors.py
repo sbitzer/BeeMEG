@@ -193,6 +193,10 @@ subject = pd.concat([subject, ep_summary[['ndtmode', 'dtmode', 'ndt_vs_RT',
 subject_trial = allresp_sorted.copy()
 subject_trial.rename(columns={'correct': 'is_correct'}, inplace=True)
 
+# left and right responses
+subject_trial['left_response'] = subject_trial.response == -1
+subject_trial['right_response'] = subject_trial.response == 1
+
 # is_correct_ideal
 subject_trial['is_correct_ideal'] = (allresp_sorted.response.values.reshape(
     (36, 480), order='C') == correct_ideal[:, 0]).flatten(order='C')

@@ -40,11 +40,18 @@ resfile = 'meg_sequential_201802061518.h5'
 # trial normalisation of data, local normalisation of DM
 #resfile = 'meg_singledot_201808171105.h5'
 
+# baseline (-0.3, 0), response-aligned
+# time [-1000, 500], exclude time-outs
+# trial_time, left_response, right_response
+# trial normalisation of data, local normalisation of DM
+#resfile = 'meg_singledot_201809051639.h5'
+
 # should be chosen from the above, used for figures comparing momentary and
 # accumulated evidence using separate regressions using dot_x or sum_dot_x
 files = {'dot_x': 'meg_sequential_201802061518.h5',
          'sum_dot_x': 'meg_sequential_201808091710.h5',
-         'response': 'meg_singledot_201808171105.h5'}
+         'response': 'meg_singledot_201808171105.h5',
+         'lr_response': 'meg_singledot_201809051639.h5'}
 
 resfile = os.path.join(helpers.resultsdir, resfile)
 
@@ -332,6 +339,37 @@ axcb.tick_params(labelsize='x-small')
 axcb.set_title('z', fontsize='small')
 
 fig.savefig(os.path.join(helpers.figdir, 'response_difference.png'))
+
+
+#%% compare topographies for left and right responses and their difference
+measure = 'tval'
+time = 30
+
+data = pd.read_hdf(os.path.join(helpers.resultsdir, files['lr_response']),
+                   'second_level').loc[(0, slice(None), time), measure]
+
+fig, axes = plt.subplots(1, 3, figsize=(5, 2))
+
+ev = mne.EvokedArray(
+        np.c_[data[['left_response', 'right_response']], 
+              data.right_response - data.left_response],
+        evoked.info, nave=480*5, tmin=0)
+
+vmax_high = np.round(np.abs(ev.data).max(), 1)
+ev.plot_topomap(scalings=1, vmin=-vmax_high, vmax=vmax_high, colorbar=False,
+                image_interp='nearest', sensors=False, time_unit='ms',
+                units='t', outlines='skirt', axes=axes);
+                
+axes[0].set_title('left')
+axes[1].set_title('right')
+axes[2].set_title('right-left')
+
+for ax in axes:
+    bbox = ax.get_position(True)
+    ax.set_position([bbox.x0, -0.03, bbox.width, bbox.height], 
+                    which='original')
+
+fig.savefig(os.path.join(helpers.figdir, 'left-right_response.png'))
 
 
 #%% show example beta-trajectories for selected sensors
