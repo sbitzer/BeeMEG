@@ -204,6 +204,20 @@ fig.tight_layout()
 fig.savefig(os.path.join(helpers.figdir, 'av_source_timecourses.png'), dpi=300)
 
 
+#%% print area names with largest correlation magnitudes for dot_x in timeslice
+timeslice = slice(0, 500)
+
+sorted_areas = second_level.loc[(slice(None), timeslice), 
+                                ('tval', 'dot_x')].abs().mean(
+                                level='label').sort_values(ascending=False)
+
+for hemi in ['L', 'R']:
+    print(hemi)
+    print(', '.join(sorted_areas[sorted_areas.index.map(
+            lambda s: s.startswith(hemi))].head(5).index.map(
+                    lambda s: s[2:-7])))
+    
+
 #%% get tidy data of areas with largest effects for two regressors
 timeslice = slice(0, 500)
 
