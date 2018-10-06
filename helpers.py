@@ -65,6 +65,21 @@ def load_dots(dotfile=dotfile, dotdir=basedir):
     return dotpos
 
 
+def export_dots(target_dir):
+    dotpos = load_dots()
+    
+    dotindex = pd.Index(np.arange(1, dotpos.shape[0] + 1), name='dot')
+    colindex = pd.Index(['x', 'y'], name='coordinate')
+    
+    trialdf = lambda x: pd.DataFrame(x, index=dotindex, columns=colindex)
+    dots = pd.concat(
+            [trialdf(dotpos[:, :, tr]) for tr in range(dotpos.shape[2])],
+            keys=np.arange(1, dotpos.shape[2] + 1), 
+            names=['trial', 'dot'])
+    
+    dots.to_csv(os.path.join(target_dir, 'dots.csv'))
+
+
 if 'rtmodels' in locals():
     def get_ideal_observer(dotpos=None, bound=0.8):
         if dotpos is None:
@@ -233,6 +248,12 @@ def load_all_responses(behavdatadir=behavdatadir, cond=cond,
     allresp = allresp.reorder_levels(['subject', 'trial'])
     
     return allresp
+
+
+def export_behavioural_data(target_dir):
+    allresp = load_all_responses()
+    
+    allresp.to_csv(os.path.join(target_dir, 'behavioural_data.csv'))
     
 
 def load_meg_epochs_from_sdat(subject, megdatadir=megdatadir):
@@ -291,6 +312,34 @@ def load_meg_epochs_from_sdat(subject, megdatadir=megdatadir):
     epochs = mne.EpochsArray(data, info, events, tmin, event_id, proj=False)
     
     return epochs
+
+
+def export_meg_epochs(target_dir):
+    import time
+    
+    subjects = find_available_subjects(megdatadir=megdatadir)
+    
+    for s, subject in enumerate(subjects):
+        print_('\nexporting subject {:02} ... '.format(subject))
+        unfinished = True
+        while unfinished:
+            try:
+                try:
+                    epochs = load_meg_epochs_from_sdat(subject)
+                    epochs.anonymize()
+                    epochs.save(os.path.join(
+                            target_dir, 's{:02}-epo.fif'.format(subject)))
+                    unfinished = False
+                except:
+                    time.sleep(5)
+                    
+            except KeyboardInterrupt:
+                print_('interrupted.')
+                return subjects[:s]
+            
+    print_('done.')
+    
+    return subjects
 
 
 def chtype_str(megtype, **type_kws):
