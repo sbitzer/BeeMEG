@@ -32,7 +32,7 @@ show_measure = 'abstval'
 use_basefile = show_measure in ss.basefile_measures
 
 # regressor of interest
-r_name = 'sum_dot_x'
+r_name = 'dot_x'
 
 # settings for specific regressors (can overwrite common settings)
 if r_name == 'dot_x':
@@ -62,8 +62,8 @@ if r_name == 'dot_x':
     basefile = 'source_sequential_201807041930.h5'
     
     twins = {"early": [110, 130], 
-             "transition": [160, 200], 
-             "plateau": [300, 500]}
+             "intermediate": [160, 200], 
+             "late": [290, 510]}
     
 elif r_name == 'sum_dot_x':
     # loose source orientations, but cortex normal currents
@@ -100,8 +100,8 @@ elif r_name == 'dot_x_sign':
     basefile = 'source_sequential_201808161156.h5'
     
     twins = {"early": [110, 130], 
-             "transition": [160, 200], 
-             "plateau": [300, 500]}
+             "intermediate": [160, 200], 
+             "late": [290, 510]}
     
 elif r_name == 'response':
     # loose source orientations, but cortex normal currents
@@ -264,12 +264,12 @@ def brain_plot(brain, wname, toplabels=False, save=False,
 
 
 #%%
-interactive = False
+interactive = True
 show_toplabels = True
 
 if interactive:
     hemi = 'rh'
-    wname = 'build-up'
+    wname = 'early'
     brain = brain_plot(hemi, wname, show_toplabels)
 else:
     for hemi in ['lh', 'rh']:
