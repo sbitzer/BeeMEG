@@ -206,7 +206,8 @@ def get_colorinfo(avsrcdf):
 #%% make helper plotting function
 filepat_base = 'av_brain_{}_{}'.format(r_name, show_measure)
 
-def brain_plot(brain, wname, toplabels=False, save=False):
+def brain_plot(brain, wname, toplabels=False, save=False,
+               backface_culling=True):
     if r_name in ['dot_x', 'dot_y', 'dot_x_sign']:
         views = {'rh': ['medial', 'parietal'], #{'azimuth': -20, 'elevation': 62, 'roll': -68}], 
                  'lh': ['parietal', 'medial']}
@@ -230,6 +231,9 @@ def brain_plot(brain, wname, toplabels=False, save=False):
     sv.show_labels_as_data(results[wname]['avsrcdf'], show_measure, brain, 
                            time_label=None, parc=parc, **cinfo)
     
+    if backface_culling:
+        brain.data['surfaces'][0].actor.property.backface_culling = True
+    
     if toplabels:
         brain.remove_labels()
         
@@ -239,6 +243,10 @@ def brain_plot(brain, wname, toplabels=False, save=False):
             if label.name in results[wname]['toplabels'][hemi]:
                 brain.add_label(label, borders=1, hemi=hemi, alpha=0.8, 
                                 color='k')
+                
+        if backface_culling:
+            for ldict in brain._label_dicts.values():
+                ldict['surfaces'][0].actor.property.backface_culling = True
     
     # increase font size of colorbar - this only works by increasing the 
     # colorbar itself and setting the ratio of colorbar to text
