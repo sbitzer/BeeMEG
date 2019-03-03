@@ -500,14 +500,19 @@ measure = 'mean'
 nperm = 3
 npre = 2
 
+plot_topos = False
+
 a_times = np.r_[20, 80, 120, 180, 320, 400, 490]
 
 cols = dict(accev='C0', 
             dot_x=[str(c) for c in np.linspace(0.7, 0.9, npre + 1)])
 labels = dict(accev='accumulated', dot_x='momentary')
 
-fig = plt.figure(figsize=(7, 4.5))
-ax = plt.subplot(2, 1, 1)
+if plot_topos:
+    fig = plt.figure(figsize=(7, 4.5))
+    ax = plt.subplot(2, 1, 1)
+else:
+    fig, ax = plt.subplots(figsize=(7, 3.5))
 
 # load x-correlations, produce time shifted versions and plot them with fill
 sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['dot_x']),
@@ -549,26 +554,29 @@ ax.set_xlim(0, 690)
 ylim = ax.get_ylim()
 ax.set_ylim(0, ylim[1])
 
-# plot topographies
-T = len(a_times)
-at_axes = [plt.subplot(2, T, T+p+1) for p in range(T)]
-
-values = sl.xs(0)[(measure, 'sum_dot_x')]
-ev = mne.EvokedArray(
-        values.values.reshape(102, values.index.levels[1].size), 
-        evoked.info, nave=480*5, 
-        tmin=values.index.levels[1][0])
-
-ev.plot_topomap(a_times / 1000, scalings=1, vmin=vmin, vmax=vmax, 
-                image_interp='nearest', sensors=False, time_unit='ms',
-                units='beta', outlines='skirt', axes=at_axes, colorbar=False);
-
-# tune axis positions
-ax.set_position([0.12, 0.38, 0.85, 0.56])
-for tax in at_axes:
-    bbox = tax.get_position(True)
-    tax.set_position([bbox.x0, -0.11, bbox.width, bbox.height], 
-                     which='original')
+if plot_topos:
+    # plot topographies
+    T = len(a_times)
+    at_axes = [plt.subplot(2, T, T+p+1) for p in range(T)]
+    
+    values = sl.xs(0)[(measure, 'sum_dot_x')]
+    ev = mne.EvokedArray(
+            values.values.reshape(102, values.index.levels[1].size), 
+            evoked.info, nave=480*5, 
+            tmin=values.index.levels[1][0])
+    
+    ev.plot_topomap(a_times / 1000, scalings=1, vmin=vmin, vmax=vmax, 
+                    image_interp='nearest', sensors=False, time_unit='ms',
+                    units='beta', outlines='skirt', axes=at_axes, colorbar=False);
+    
+    # tune axis positions
+    ax.set_position([0.12, 0.38, 0.85, 0.56])
+    for tax in at_axes:
+        bbox = tax.get_position(True)
+        tax.set_position([bbox.x0, -0.11, bbox.width, bbox.height], 
+                         which='original')
+else:
+    fig.tight_layout()
     
 fig.savefig(os.path.join(figdir, 'accev_vs_dotx_sensor_absmean.png'))
 
