@@ -212,6 +212,38 @@ wval, wpval = scipy.stats.wilcoxon(slabs['dot_x'] - slabs['dot_y'])
 print('Wilcoxon-test: W = %d, p=%e' % (wval, wpval))
 
 
+#%% function for plotting difference topographies of response correlation 
+#   at two time points
+def plot_difference_topo(ax, t1=-120, t2=30, measure='beta'):
+    # load data
+    data = pd.read_hdf(os.path.join(helpers.resultsdir, files['response']),
+                       'first_level').loc[0].loc[(slice(None), [t1, t2]), :].xs(
+                             measure, level='measure', axis=1).xs(
+                                     'response', level='regressor', axis=1).copy()
+    
+    # scale data so that for each time point and subject the mean magnitude of
+    # betas across sensors is 1
+    data = data.unstack('time')
+    data, _, _ = helpers.normalise_magnitudes(data)
+    
+    # compute difference between times
+    diff = data.xs(t1, level='time', axis=1) - data.xs(t2, level='time', axis=1)
+    
+    # determine statistically significant values
+    tvals, pvals = scipy.stats.ttest_1samp(diff, 0, axis=1)
+    reject, pval_fdr = mne.stats.fdr_correction(pvals, alpha=0.01)
+    
+    # plot mean differences and significant sensors
+    ev = mne.EvokedArray(
+            diff.mean(axis=1).values[:, None], 
+            evoked.info, nave=480*5, 
+            tmin=0)
+    vmax_high = np.round(np.abs(ev.data).max(), 1)
+    ev.plot_topomap(0, scalings=1, vmin=-vmax_high, vmax=vmax_high, colorbar=False,
+                    image_interp='nearest', sensors=False, time_unit='ms',
+                    units='au', outlines='skirt', mask=reject[:, None], axes=ax);
+
+
 #%% average signal for response across response-aligned time
 measure = 'mean'
 
@@ -221,6 +253,9 @@ t_slice = slice(-700, 400)
 times_low = np.r_[-300, -120]
 times_high = np.r_[30, 360]
 times = np.r_[times_low, times_high]
+
+t1 = -120
+t2 = 30
 
 nperm = 3
 
@@ -249,9 +284,9 @@ ax.set_xlabel('time from response (ms)')
 ax.set_ylabel(r'mean magnitude of grand average $\beta$')
 
 # plot topographies
-T = len(times)
-axes_low = [plt.subplot(3, T, T+p+1) for p in range(len(times_low))]
-axes_high = [plt.subplot(3, T, T+len(times_low)+p+1) 
+T = len(times) + 1
+axes_low = [fig.add_subplot(3, T, T+p+1) for p in range(len(times_low))]
+axes_high = [fig.add_subplot(3, T, T+len(times_low)+p+2) 
              for p in range(len(times_high))]
 
 values = sl.xs(0)[(measure, 'response')]
@@ -269,63 +304,45 @@ ev.plot_topomap(times_high / 1000, scalings=1, vmin=-vmax_high, vmax=vmax_high,
                 image_interp='nearest', sensors=False, time_unit='ms',
                 units='beta', outlines='skirt', axes=axes_high, colorbar=False);
 
+ax_diff = fig.add_subplot(3, T, T+len(times_low)+1)
+plot_difference_topo(ax_diff, t1, t2)
+ax_diff.set_title('[{} - {}]'.format(t1, t2))          
+      
 def add_cbar(im, ax):
     cb = mpl.colorbar.ColorbarBase(ax, cmap=im.cmap, norm=im.norm,
                                    orientation='horizontal')
     cb.set_ticks(np.linspace(im.norm.vmin, im.norm.vmax, 5))
     ax.set_xlabel(r'second level $\beta$')
     
-axes_cbar = [plt.subplot(3, 2, 5), plt.subplot(3, 2, 6)]
-for axt, axcb, xloc in zip([axes_low[0], axes_high[0]], axes_cbar, [0.08, 0.56]):
+xoffset = 0.03
+    
+axes_cbar = [fig.add_subplot(3, 2, 5), fig.add_subplot(3, 2, 6)]
+for axt, axcb, xloc in zip([axes_low[0], axes_high[0]], axes_cbar, [0.1, 0.595]):
     im = [c for c in axt.get_children() 
           if isinstance(c, mpl.image.AxesImage)][0]
     add_cbar(im, axcb)
     
-    axcb.set_position([xloc, 0.1, 0.35, 0.03])
+    axcb.set_position([xloc + xoffset, 0.11, 0.3, 0.03])
                 
 # tune other axis positions
 ax.set_position([0.12, 0.5, 0.85, 0.44])
-for tax in axes_low + axes_high:
+for tax in axes_low + axes_high + [ax_diff]:
     bbox = tax.get_position(True)
-    tax.set_position([bbox.x0, 0.11, bbox.width, bbox.height], 
+    tax.set_position([bbox.x0 + xoffset, 0.12, bbox.width, bbox.height], 
                      which='original')
 
-fig.savefig(os.path.join(helpers.figdir, 'response_sensor_absmean.png'))
+fig.savefig(os.path.join(helpers.figdir, 'response_sensor_absmean.png'),
+            dpi=300)
 
 
-#%% compare topographies of response correlation at two time points
-measure = 'beta'
+#%% compare topographies of response correlation at two time points in
+#   own figure
 t1 = -120
 t2 = 30
 
-# load data
-data = pd.read_hdf(os.path.join(helpers.resultsdir, files['response']),
-                   'first_level').loc[0].loc[(slice(None), [t1, t2]), :].xs(
-                         measure, level='measure', axis=1).xs(
-                                 'response', level='regressor', axis=1).copy()
-
-# scale data so that for each time point and subject the mean magnitude of
-# betas across sensors is 1
-data = data.unstack('time')
-data, _, _ = helpers.normalise_magnitudes(data)
-
-# compute difference between times
-diff = data.xs(t1, level='time', axis=1) - data.xs(t2, level='time', axis=1)
-
-# determine statistically significant values
-tvals, pvals = scipy.stats.ttest_1samp(diff, 0, axis=1)
-reject, pval_fdr = mne.stats.fdr_correction(pvals, alpha=0.01)
-
-# plot mean differences and significant sensors
 fig, ax = plt.subplots(figsize=(2.5,2))
-ev = mne.EvokedArray(
-        diff.mean(axis=1).values[:, None], 
-        evoked.info, nave=480*5, 
-        tmin=0)
-vmax_high = np.round(np.abs(ev.data).max(), 1)
-ev.plot_topomap(0, scalings=1, vmin=-vmax_high, vmax=vmax_high, colorbar=False,
-                image_interp='nearest', sensors=False, time_unit='ms',
-                units='au', outlines='skirt', mask=reject[:, None], axes=ax);
+
+plot_difference_topo(ax, t1, t2)
 
 ax.set_title('choice\n{} ms - {} ms'.format(t1, t2))
 ax.set_position([0.05, 0.04, 0.65, 0.73])
