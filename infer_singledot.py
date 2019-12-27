@@ -34,7 +34,7 @@ dots = np.arange(1, 7)
 # onset aligned analysis: all trials with response-aligned time >= toolate will
 # be removed from regression analysis, set to 5000 or higher to include all 
 # available trials
-toolate = 5000
+toolate = -200
 
 # exclude timed-out trials
 exclude_to = True
@@ -44,7 +44,7 @@ exclude_to = True
 mindata = 30
 
 # names of regressors that should enter the GLM
-r_names = ['trial_time', 'left_response', 'right_response']
+r_names = ['trial_time', 'dot_x', 'dot_y', 'response', 'intercept']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
@@ -54,7 +54,7 @@ r_cats = subject_DM.regressors.get_regressor_categories(r_names)
 # whether a response-aligned analysis should be run, i.e., whether time should
 # be defined with respect to the response time; if True, set timeslice below
 # providing both ends
-response_aligned = True
+response_aligned = False
 if response_aligned and toolate <= 1000:
     key = input("toolate is suspiciously low ({}) for response-aligned "
                 "analysis!\nContinue anyway? (y/n): ".format(toolate))
@@ -66,7 +66,7 @@ if response_aligned and toolate <= 1000:
 # if 1-element, all times starting with the given will be included in analysis;
 # if 2-element, these are the slice limits considered (right edge is inclusive)
 # note that global normalisation of data is still over all times in srcfile
-timeslice = [-1000, 500]
+timeslice = [-100, 1200]
 
 # time windows whithin which times will be aggregated as indepedent data points
 # into a common regression analysis
@@ -120,7 +120,7 @@ if datatype == 'meg':
     megtype = 'mag'
     eog = False
     bl = (-0.3, 0)
-    window = [0, 2.5]
+    window = [-0.1, 2.5]
     
     srcfile = helpers.create_meg_epochs_hdf(sfreq, sfreq, window, megtype, bl,
                                             eog=eog)

@@ -20,7 +20,13 @@ import matplotlib.pyplot as plt
 
 # magnetometers, baseline = (-0.3, 0), trial normalisation of data, 
 # dots 1-6, local normalisation of DM, exclude timeouts, toolate=-200
-fname = 'meg_singledot_201803271303.h5'
+# 'trial_time', 'dot_x', 'dot_y', 'response', 'intercept'
+fname = 'meg_singledot_201912261017.h5'
+
+# magnetometers, baseline = (-0.3, 0), trial normalisation of data, 
+# dots 1-6, local normalisation of DM, exclude timeouts, toolate=-200
+# 'trial_time', 'dot_x', 'dot_y', 'response', 'entropy', 'intercept'
+#fname = 'meg_singledot_201803271303.h5'
 
 # label mode = mean, baseline (-0.3, 0), dots 3-5, 
 # source GLM, sum_dot_y_prev_3, accev_3, dot_x, dot_y, trial regressors
@@ -81,6 +87,7 @@ nperm = 3
 
 measure = 'mean'
 label = maxlabel
+#label = 'MEG2241'
 #label = 'MEG0741'
 #label = 'L_4_ROI-lh'
 
