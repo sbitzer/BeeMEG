@@ -25,7 +25,13 @@ import statsmodels.api as sm
 # time window [0, 690], exclude time-outs, local normalisation of DM
 # trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
 # label_tc normalised across trials but within times and subjects
-resfile = 'meg_sequential_201802061518.h5'
+#resfile = 'meg_sequential_201802061518.h5'
+
+# baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [-100, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, accev, sum_dot_y_prev, percupt, constregs=0 for 1st dot, 
+# normDM=local, normdata=trials
+resfile = 'meg_sequential_201911180759.h5'
 
 # baseline (-0.3, 0), all dots with toolate=-200, 
 # time window [0, 690], exclude time-outs, local normalisation of DM
@@ -33,6 +39,13 @@ resfile = 'meg_sequential_201802061518.h5'
 # constregs=0 for 1st dot, 
 # label_tc normalised across trials but within times and subjects
 #resfile = 'meg_sequential_201808091710.h5'
+
+# baseline (-0.3, 0), all dots with toolate=-200, 
+# time window [-100, 690], exclude time-outs, local normalisation of DM
+# trialregs_dot=0, sum_dot_x without dot_x, sum_dot_y without dot_y, percupt, 
+# constregs=0 for 1st dot, 
+# label_tc normalised across trials but within times and subjects
+#resfile = 'meg_sequential_201911182220.h5'
 
 # baseline (-0.3, 0), response-aligned
 # time [-1000, 500], exclude time-outs
@@ -48,8 +61,8 @@ resfile = 'meg_sequential_201802061518.h5'
 
 # should be chosen from the above, used for figures comparing momentary and
 # accumulated evidence using separate regressions using dot_x or sum_dot_x
-files = {'dot_x': 'meg_sequential_201802061518.h5',
-         'sum_dot_x': 'meg_sequential_201808091710.h5',
+files = {'dot_x': 'meg_sequential_201911180759.h5',
+         'sum_dot_x': 'meg_sequential_201911182220.h5',
          'response': 'meg_singledot_201808171105.h5',
          'lr_response': 'meg_singledot_201809051639.h5'}
 
@@ -60,7 +73,7 @@ figdir = helpers.figdir
 accev_off = 100
 accev_sign = -1
 
-evoked = helpers.load_evoked_container(window=[0, 0.9])
+evoked = helpers.load_evoked_container(window=[-0.1, 0.9])
 
 vmin = -0.1
 vmax = -vmin
@@ -146,7 +159,7 @@ yav_ax.legend([datal, perml, markers], ['data', 'permuted', 'topo times'])
 # add topomaps
 values = second_level.xs(0)[('mean', 'dot_x')]
 ev = mne.EvokedArray(values.values.reshape(102, values.index.levels[1].size), 
-                     evoked.info, tmin=values.index.levels[1][0], 
+                     evoked.info, tmin=values.index.levels[1][0] / 1000, 
                      nave=480*5)
 
 ev.plot_topomap(x_times/1000, scalings=1, vmin=vmin, vmax=vmax, 
@@ -155,7 +168,7 @@ ev.plot_topomap(x_times/1000, scalings=1, vmin=vmin, vmax=vmax,
 
 values = second_level.xs(0)[('mean', 'dot_y')]
 ev = mne.EvokedArray(values.values.reshape(102, values.index.levels[1].size), 
-                     evoked.info, tmin=values.index.levels[1][0], 
+                     evoked.info, tmin=values.index.levels[1][0] / 1000, 
                      nave=480*5)
 
 ev.plot_topomap(y_times/1000, scalings=1, vmin=vmin, vmax=vmax, 
@@ -306,7 +319,9 @@ ev.plot_topomap(times_high / 1000, scalings=1, vmin=-vmax_high, vmax=vmax_high,
 
 ax_diff = fig.add_subplot(3, T, T+len(times_low)+1)
 plot_difference_topo(ax_diff, t1, t2)
-ax_diff.set_title('[{} - {}]'.format(t1, t2))          
+ax_diff.set_title('difference\n({} - {})'.format(t1, t2))       
+ax_diff.set_fc('0.9')
+ax_diff.set_frame_on(True)
       
 def add_cbar(im, ax):
     cb = mpl.colorbar.ColorbarBase(ax, cmap=im.cmap, norm=im.norm,
@@ -500,13 +515,13 @@ measure = 'mean'
 nperm = 3
 npre = 2
 
-plot_topos = False
+plot_topos = True
 
 a_times = np.r_[20, 80, 120, 180, 320, 400, 490]
 
 cols = dict(accev='C0', 
             dot_x=[str(c) for c in np.linspace(0.7, 0.9, npre + 1)])
-labels = dict(accev='accumulated', dot_x='momentary')
+labels = dict(accev='accumulated', dot_x='moment.')
 
 if plot_topos:
     fig = plt.figure(figsize=(7, 4.5))
@@ -517,18 +532,25 @@ else:
 # load x-correlations, produce time shifted versions and plot them with fill
 sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['dot_x']),
                  'second_level')
+
+tmin = sl.index.get_level_values('time').unique()[0]
+
 xmags = sl.xs(0)[(measure, 'dot_x')].abs().mean(level='time')
 xmags = pd.DataFrame(xmags.values, index=xmags.index, columns=[0])
 for pre in range(1, npre+1):
-    xmagsprev = pd.DataFrame(xmags.loc[slice(pre * 100, None), 0].values, 
-                             index=np.arange(0, 700 - pre * 100, 10), 
+    xmagsprev = pd.DataFrame(xmags.loc[slice(tmin + pre * 100, None), 0].values, 
+                             index=np.arange(
+                                     tmin,
+                                     xmags.index[-1] + 10 - pre * 100, 10), 
                              columns=[-pre])
     xmags[-pre] = xmagsprev
 del xmagsprev
 xmags.fillna(0, inplace=True)
+xl = []
 for i, x in enumerate(xmags.columns):
-    xl = ax.fill_between(xmags.index, xmags[x], color=cols['dot_x'][i], 
-                          alpha=0.9, zorder=x, label=labels['dot_x'])
+    label = labels['dot_x'] + ('  0' if i==0 else f' -{i}')
+    xl.append(ax.fill_between(xmags.index, xmags[x], color=cols['dot_x'][i], 
+                              alpha=0.9, zorder=x, label=label))
 
 # load sum_dot_x and plot
 sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['sum_dot_x']),
@@ -536,11 +558,13 @@ sl = pd.read_hdf(os.path.join(helpers.resultsdir, files['sum_dot_x']),
 for perm in range(1, nperm+1):
     values = sl.xs(perm)[(measure, 'sum_dot_x')].abs().mean(level='time')
     perml, = ax.plot(values.index, values.values, ':', 
-                     color=cols['accev'], lw=2, alpha=0.3, zorder=1)
+                     color=cols['accev'], lw=2, alpha=0.3, zorder=1,
+                     label='permuted')
 
 values = sl.xs(0)[(measure, 'sum_dot_x')].abs().mean(level='time')
 al, = ax.plot(values.index, values.values, 
-              color=cols['accev'], lw=3, alpha=1, zorder=2)
+              color=cols['accev'], lw=3, alpha=1, zorder=2,
+              label=labels['accev'])
 
 markers, = ax.plot(a_times, values.loc[a_times], '.k', ms=10)
 
@@ -548,9 +572,10 @@ ax.set_title('evidence', fontdict={'fontsize': 12})
 ax.set_xlabel('time from dot onset (ms)')
 ax.set_ylabel(r'mean magnitude of grand average $\beta$')
 
-ax.legend([xl, al, perml], [labels['dot_x'], labels['accev'], 'permuted'])
+lls = xl + [al, perml]
+ax.legend(lls, [l.get_label() for l in lls], frameon=True, loc='upper right')
 
-ax.set_xlim(0, 690)
+ax.set_xlim(tmin, 690)
 ylim = ax.get_ylim()
 ax.set_ylim(0, ylim[1])
 
@@ -563,7 +588,7 @@ if plot_topos:
     ev = mne.EvokedArray(
             values.values.reshape(102, values.index.levels[1].size), 
             evoked.info, nave=480*5, 
-            tmin=values.index.levels[1][0])
+            tmin=values.index.levels[1][0] / 1000)
     
     ev.plot_topomap(a_times / 1000, scalings=1, vmin=vmin, vmax=vmax, 
                     image_interp='nearest', sensors=False, time_unit='ms',

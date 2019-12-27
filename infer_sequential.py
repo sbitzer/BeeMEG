@@ -31,8 +31,8 @@ exclude_to = True
 mindata = 30
 
 # names of regressors that should enter the GLM
-r_names = ['percupt_x', 'percupt_y', 'abs_dot_y', 'abs_dot_x', 'dot_y',
-            'dot_x_sign', 'accev_sign', 'intercept', 'sum_dot_y_prev']
+r_names = ['percupt_x', 'percupt_y', 'abs_dot_y', 'abs_dot_x', 'sum_dot_y',
+            'sum_dot_x', 'intercept']
 R = len(r_names)
 # sort for use in index below
 r_names.sort()
@@ -59,7 +59,7 @@ trialregs_dot = 0
 # 700 ms as right edge of the dot onset aligned time window, dots 1-25 could
 # enter the analysis
 # note that normalisation of data is still over all times in srcfile
-timeslice = [0, 690]
+timeslice = [-100, 690]
 #timeslice = [250, 600]
 
 # How many permutations should be computed?
@@ -104,14 +104,14 @@ normDM = 'local'
 normdata = 'trials'
 
 # data to use, 'meg' for MEG channels, 'source' for sources
-datatype = 'source'
+datatype = 'meg'
 
 if datatype == 'meg':
     sfreq = 100
     megtype = 'mag'
     eog = False
     bl = (-0.3, 0)
-    window = [0, 2.5]
+    window = [-0.1, 2.5]
     
     srcfile = helpers.create_meg_epochs_hdf(sfreq, sfreq, window, megtype, bl,
                                             filt_freqs=None, eog=eog)
@@ -382,7 +382,7 @@ for perm in np.arange(nperm+1):
             epochs = epochs.stack('time')
         
         for t0 in times:
-            print('\rsubject = %2d, t0 = %3d' % (sub, t0), end='', flush=True)
+            print('\rsubject = %2d, t0 = % 3d' % (sub, t0), end='', flush=True)
             
             DMsub = DM.loc[sub].copy()
             DMsub.index = get_DM_time_index(t0)
