@@ -182,11 +182,12 @@ with pd.HDFStore(file, mode='w', complevel=7, complib='blosc') as store:
 
 
 #%% extract some basic info from example data
-subjects = helpers.find_available_subjects(megdatadir=helpers.megdatadir)
-S = subjects.size
-
 with pd.HDFStore(srcfile, 'r') as store:
+    subjects = store.select_column('epochs', 'subject').unique()
     epochs = store.select(epname, 'subject=2')
+
+S = subjects.size
+print(f'Number of subjects = {S}.')
 
 # times stored in epochs
 epochtimes = epochs.index.levels[2]
